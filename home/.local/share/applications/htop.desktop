@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Htop
+GenericName=Process Viewer
+Comment=Open htop in Zenwolf's large floating monitor terminal
+Icon=htop
+Exec=ghostty --class=zenwolf-monitor --title=htop -e htop
+Terminal=false
+NoDisplay=true
+Categories=System;Monitor;
+Keywords=system;process;task;monitor;

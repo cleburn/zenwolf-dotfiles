@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly service='zenwolf-waybar.service'
+readonly action="${1:-toggle}"
+
+start_bar() {
+    # A previous rapid-restart incident may have left the unit rate-limited.
+    # A cleanly stopped static unit may already be unloaded, in which case
+    # reset-failed returns nonzero even though there is no failure to clear.
+    systemctl --user reset-failed "$service" 2>/dev/null || true
+    systemctl --user start "$service"
+}
+
+case "$action" in
+    toggle)
+        if pgrep -x waybar >/dev/null; then
+            pkill -SIGUSR1 -x waybar
+        else
+            start_bar
+        fi
+        ;;
+    reload)
+        if pgrep -x waybar >/dev/null; then
+            pkill -SIGUSR2 -x waybar
+        else
+            start_bar
+        fi
+        ;;
+    status)
+        systemctl --user status "$service" --no-pager
+        ;;
+    *)
+        printf 'Usage: zenwolf-waybar {toggle|reload|status}\n' >&2
+        exit 2
+        ;;
+esac

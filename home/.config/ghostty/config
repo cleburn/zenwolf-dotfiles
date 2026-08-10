@@ -1,0 +1,38 @@
+font-family = JetBrainsMono Nerd Font Mono
+font-size = 14
+
+# Theme changes deliberately reload Ghostty. Notification flags are additive,
+# so config-reload must be disabled explicitly rather than merely omitted.
+app-notifications = clipboard-copy,no-config-reload
+
+# Zenwolf's semantic terminal palette. Keep status colors visually distinct:
+# red = error, green = healthy, gold = caution, cyan = structure/accent.
+background = #0b1017
+foreground = #e6edf3
+cursor-color = #39c5cf
+selection-background = #243247
+selection-foreground = #f8fafc
+
+# Normal ANSI colors 0-7.
+palette = 0=#111827
+palette = 1=#ef4444
+palette = 2=#22c55e
+palette = 3=#f59e0b
+palette = 4=#3b82f6
+palette = 5=#a855f7
+palette = 6=#06b6d4
+palette = 7=#d1d5db
+
+# Bright ANSI colors 8-15.
+palette = 8=#6b7280
+palette = 9=#f87171
+palette = 10=#4ade80
+palette = 11=#facc15
+palette = 12=#60a5fa
+palette = 13=#c084fc
+palette = 14=#22d3ee
+palette = 15=#f9fafb
+
+# The active Zenwolf profile is loaded last, so its coordinated palette can
+# override these safe fallback colors without changing terminal behavior.
+config-file = ../zenwolf/current/ghostty.conf

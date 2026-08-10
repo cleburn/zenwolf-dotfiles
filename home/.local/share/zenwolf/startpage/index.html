@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Zenwolf</title>
+  <link rel="stylesheet" href="theme.css" data-zenwolf-theme>
+  <link rel="stylesheet" href="base.css">
+  <script src="theme-watch.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body class="startpage">
+  <div class="wallpaper" aria-hidden="true"></div>
+  <main class="startpage-shell">
+    <header class="masthead">
+      <a class="brand" href="index.html" aria-label="Zenwolf startpage">
+        <svg viewBox="0 0 44 30" aria-hidden="true">
+          <path d="M3 25V8l8 7 6-12 5 10 5-10 6 12 8-7v17l-9-5-10 7-10-7-9 5Z"></path>
+          <path d="m15 18 4 2m10-2-4 2M20 24h4"></path>
+        </svg>
+        <span>zenwolf</span>
+      </a>
+    </header>
+
+    <div class="element-infinity" role="img"
+         aria-label="Infinity formed by water, earth, fire, and air">
+      <svg viewBox="0 0 440 180" aria-hidden="true">
+        <defs>
+          <linearGradient id="water-flow" gradientUnits="userSpaceOnUse"
+                          x1="220" y1="90" x2="55" y2="70">
+            <stop offset="0%" class="gold-stop"></stop>
+            <stop offset="48%" class="water-stop"></stop>
+            <stop offset="100%" class="earth-stop"></stop>
+          </linearGradient>
+          <linearGradient id="earth-flow" gradientUnits="userSpaceOnUse"
+                          x1="55" y1="70" x2="220" y2="90">
+            <stop offset="0%" class="earth-stop"></stop>
+            <stop offset="58%" class="earth-stop"></stop>
+            <stop offset="100%" class="gold-stop"></stop>
+          </linearGradient>
+          <linearGradient id="fire-flow" gradientUnits="userSpaceOnUse"
+                          x1="220" y1="90" x2="385" y2="110">
+            <stop offset="0%" class="gold-stop"></stop>
+            <stop offset="50%" class="fire-stop"></stop>
+            <stop offset="100%" class="air-stop"></stop>
+          </linearGradient>
+          <linearGradient id="air-flow" gradientUnits="userSpaceOnUse"
+                          x1="385" y1="110" x2="220" y2="90">
+            <stop offset="0%" class="air-stop"></stop>
+            <stop offset="58%" class="water-stop"></stop>
+            <stop offset="100%" class="gold-stop"></stop>
+          </linearGradient>
+          <filter id="fire-glow" x="-25%" y="-45%" width="150%" height="190%">
+            <feGaussianBlur stdDeviation="3.4" result="blur"></feGaussianBlur>
+            <feMerge>
+              <feMergeNode in="blur"></feMergeNode>
+              <feMergeNode in="SourceGraphic"></feMergeNode>
+            </feMerge>
+          </filter>
+          <filter id="earth-texture" x="-12%" y="-20%" width="124%" height="140%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.035"
+                          numOctaves="2" seed="17" result="noise"></feTurbulence>
+            <feDisplacementMap in="SourceGraphic" in2="noise" scale="4"
+                               xChannelSelector="R" yChannelSelector="G"></feDisplacementMap>
+          </filter>
+        </defs>
+        <path class="infinity-shadow"
+              d="M220 90C180 25 105 25 55 70 10 111 45 155 100 145c50-9 85-44 120-55 35-11 70-46 120-55 55-10 90 34 45 75-50 45-125 45-165-20"></path>
+        <g class="water-element">
+          <path class="element-flow water-body"
+                d="M220 90C180 25 105 25 55 70"></path>
+          <path class="water-current"
+                d="M216 82C176 34 108 32 61 69"></path>
+          <path class="water-current water-current-low"
+                d="M219 97C177 42 109 36 51 76"></path>
+        </g>
+        <g class="earth-element" filter="url(#earth-texture)">
+          <path class="element-flow earth-body"
+                d="M55 70C10 111 45 155 100 145c50-9 85-44 120-55"></path>
+          <path class="earth-strata" pathLength="100"
+                d="M55 70C10 111 45 155 100 145c50-9 85-44 120-55"></path>
+        </g>
+        <g class="fire-element" filter="url(#fire-glow)">
+          <path class="element-flow fire-body"
+                d="M220 90c35-11 70-46 120-55 55-10 90 34 45 75"></path>
+          <path class="fire-current"
+                d="M224 82c38-17 70-46 116-53 43-7 74 18 68 48"></path>
+          <path class="fire-current fire-current-inner"
+                d="M229 94c34-12 66-43 113-50 37-6 61 14 60 37"></path>
+        </g>
+        <g class="air-element">
+          <path class="element-flow air-body"
+                d="M385 110c-50 45-125 45-165-20"></path>
+          <path class="air-current"
+                d="M383 102c-48 38-110 38-151-1"></path>
+          <path class="air-current air-current-low"
+                d="M377 119c-43 31-98 29-133-4"></path>
+        </g>
+      </svg>
+    </div>
+
+    <form class="search" action="https://www.google.com/search" method="get" role="search">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="11" cy="11" r="6.5"></circle>
+        <path d="m16 16 4 4"></path>
+      </svg>
+      <label class="visually-hidden" for="search-query">Search Google</label>
+      <input id="search-query" name="q" type="search" autocomplete="off"
+             placeholder="Search Google" spellcheck="false">
+      <kbd>/</kbd>
+    </form>
+
+    <div class="link-sections" id="link-sections"></div>
+
+    <footer class="startpage-footer">
+      <p><kbd>/</kbd> search&nbsp;&nbsp; <kbd>Esc</kbd> clear</p>
+      <p>Elements / Zenwolf</p>
+    </footer>
+  </main>
+</body>
+</html>

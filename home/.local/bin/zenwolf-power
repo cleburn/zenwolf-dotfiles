@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly runtime_root="${XDG_RUNTIME_DIR:-/tmp}"
+
+# Treat the power surface like Zenwolf's Bluetooth manager: one interaction at
+# a time. A repeated shortcut while Rofi is open is ignored rather than
+# covering the first decision with another window.
+exec 9>"$runtime_root/zenwolf-power.lock"
+flock -n 9 || exit 0
+
+readonly rofi_layout='
+window {
+    width: 300px;
+}
+mainbox {
+    padding: 10px;
+    children: [ listview ];
+}
+listview {
+    lines: 6;
+    border: 0;
+    spacing: 5px;
+}
+element {
+    padding: 9px 12px;
+}
+inputbar {
+    enabled: false;
+}
+'
+
+menu() {
+    local prompt="$1"
+    rofi -dmenu -i -p "$prompt" -no-custom -theme-str "$rofi_layout"
+}
+
+confirm() {
+    local prompt="$1"
+    local answer
+
+    answer=$(printf '%s\n' 'Cancel' 'Confirm' | menu "$prompt") || return 1
+    [[ "$answer" == 'Confirm' ]]
+}
+
+choice=$(printf '%s\n' \
+    'Lock' \
+    'Suspend' \
+    'Switch desktop' \
+    'Exit desktop' \
+    'Reboot' \
+    'Power off' \
+    | menu 'Zenwolf power') || exit 0
+
+case "$choice" in
+    Lock)
+        exec "$HOME/.local/bin/zenwolf-lock"
+        ;;
+    Suspend)
+        systemctl suspend
+        ;;
+    'Switch desktop')
+        exec "$HOME/.local/bin/zenwolf-session" menu
+        ;;
+    'Exit desktop')
+        confirm 'Exit desktop?' && exec "$HOME/.local/bin/zenwolf-exit-desktop"
+        ;;
+    Reboot)
+        confirm 'Reboot Zenwolf?' && systemctl reboot
+        ;;
+    'Power off')
+        confirm 'Power off Zenwolf?' && systemctl poweroff
+        ;;
+    '')
+        exit 0
+        ;;
+esac

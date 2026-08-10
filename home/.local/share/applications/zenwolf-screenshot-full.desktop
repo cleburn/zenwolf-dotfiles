@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Screenshot (Full)
+GenericName=Screenshot Tool
+Comment=Save the complete screen immediately
+Icon=camera-photo
+Exec=zenwolf-screenshot full
+Terminal=false
+NoDisplay=true
+Categories=Graphics;
+Keywords=screenshot;capture;full;screen;grim;
+StartupNotify=false

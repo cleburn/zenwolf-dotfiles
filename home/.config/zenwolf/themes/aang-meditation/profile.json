@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "name": "Aang Meditation",
+  "mode": "dark",
+  "cycle_order": 33,
+  "wallpaper": {
+    "path": "~/.local/share/zenwolf/wallpapers/aang-meditate.jpg",
+    "sha256": "49b3362e48888f81fd961d7a0b18d0757a68c5fa06e63e5247d17ba784255eb5"
+  },
+  "palette": {
+    "background": "#170e0a",
+    "foreground": "#f3dfc1",
+    "muted": "#a49379",
+    "accent": "#79a28e",
+    "border": "#6c5945",
+    "shadow": "#030201",
+    "selection_text": "#140d08",
+    "urgent_text": "#fff8ed",
+    "waybar_surface": "#251912",
+    "waybar_surface_hover": "#38271d",
+    "rofi_surface": "#21150f",
+    "rofi_surface_hover": "#34241a",
+    "rofi_selection": "#9fc6ad",
+    "ghostty_cursor": "#d89a3c",
+    "ghostty_selection_background": "#415c50",
+    "ghostty_selection_foreground": "#fff8e9",
+    "red": "#a9323f",
+    "green": "#637f6f",
+    "gold": "#bd7d25",
+    "terminal": [
+      "#170e0a",
+      "#a9323f",
+      "#637f6f",
+      "#bd7d25",
+      "#5c7481",
+      "#89616f",
+      "#6f928a",
+      "#dfc9a9",
+      "#746455",
+      "#d0525d",
+      "#86a993",
+      "#dfa24a",
+      "#8099a6",
+      "#b48091",
+      "#96b9ad",
+      "#fff4dc"
+    ],
+    "btop_highlight": "#9fc6ad",
+    "btop_selected_background": "#415c50",
+    "btop_selected_foreground": "#fff8e9",
+    "btop_meter": "#34241a",
+    "btop_divider": "#6c5945",
+    "btop_gradient": ["#637f6f", "#9fc6ad", "#dfa24a"],
+    "cava_gradient": ["#a9323f", "#dfa24a", "#9fc6ad", "#8099a6"]
+  },
+  "opacity": {
+    "waybar": {
+      "background": 0.90,
+      "surface": 0.84,
+      "surface_hover": 0.94,
+      "shadow": 0.34
+    },
+    "rofi": {
+      "background": 0.96,
+      "surface": 0.95,
+      "surface_hover": 0.96,
+      "selection": 0.94
+    }
+  },
+  "appearance": {
+    "waybar": {
+      "panel_radius": 3,
+      "module_radius": 2,
+      "workspace_radius": 2,
+      "tooltip_radius": 3,
+      "shadow_y": 1,
+      "shadow_blur": 4
+    },
+    "rofi": {
+      "window_radius": 4,
+      "control_radius": 2
+    },
+    "ghostty": {
+      "background_opacity": 0.96
+    },
+    "hyprland": {
+      "rounding": 2,
+      "overlay_rounding": 3,
+      "border_size": 1,
+      "active_border_opacity": 0.90,
+      "inactive_border_opacity": 0.60
+    },
+    "hyprlock": {
+      "panel_width": 460,
+      "panel_height": 300,
+      "panel_x": -480,
+      "panel_y": 0,
+      "panel_radius": 4,
+      "panel_opacity": 0.90,
+      "input_width": 340,
+      "input_height": 54,
+      "input_x": -480,
+      "input_y": -60,
+      "input_radius": 2,
+      "input_opacity": 0.96,
+      "time_x": -480,
+      "time_y": 82,
+      "time_size": 64,
+      "identity_x": -480,
+      "identity_y": 28,
+      "identity_size": 16,
+      "background_brightness": 0.70
+    }
+  }
+}

@@ -1,0 +1,272 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly config_root="$HOME/.config/zenwolf"
+readonly themes_root="$config_root/themes"
+readonly runtime_root="${XDG_RUNTIME_DIR:-/tmp}"
+readonly theme_builder="$HOME/.local/bin/zenwolf-theme-build"
+
+# Serialize rapid shortcut presses. Without this lock, two concurrent swaps
+# can race while changing the shared profile symlink and reloading consumers.
+exec 9>"$runtime_root/zenwolf-theme.lock"
+flock 9
+
+usage() {
+    printf 'Usage: zenwolf-theme {sky|forest|elements|PROFILE|toggle|status|list}\n'
+}
+
+current_theme() {
+    if [[ -L "$config_root/current" ]]; then
+        basename "$(readlink -f "$config_root/current")"
+    else
+        printf 'none\n'
+    fi
+}
+
+case "${1:-status}" in
+    toggle)
+        mapfile -t available_themes < <("$theme_builder" list)
+        ((${#available_themes[@]} > 0)) || {
+            printf 'ERROR: no generated theme profiles are available.\n' >&2
+            exit 1
+        }
+
+        theme="${available_themes[0]}"
+        active_theme="$(current_theme)"
+        for index in "${!available_themes[@]}"; do
+            if [[ "${available_themes[$index]}" == "$active_theme" ]]; then
+                next_index=$(((index + 1) % ${#available_themes[@]}))
+                theme="${available_themes[$next_index]}"
+                break
+            fi
+        done
+        ;;
+    status)
+        current_theme
+        exit 0
+        ;;
+    list)
+        "$theme_builder" list
+        exit 0
+        ;;
+    sky|penrose-sky)
+        theme='penrose-sky'
+        ;;
+    forest|penrose-forest)
+        theme='penrose-forest'
+        ;;
+    elements)
+        theme='elements'
+        ;;
+    *)
+        requested_theme="${1:-}"
+        if [[ -n "$requested_theme" && -d "$themes_root/$requested_theme" ]]; then
+            theme="$requested_theme"
+        else
+            usage >&2
+            exit 2
+        fi
+        ;;
+esac
+
+readonly theme_dir="$themes_root/$theme"
+
+if [[ ! -x "$theme_builder" ]]; then
+    printf 'ERROR: theme builder is absent or not executable: %s\n' \
+        "$theme_builder" >&2
+    exit 1
+fi
+
+if [[ ! -d "$theme_dir" ]]; then
+    printf 'ERROR: theme directory is absent: %s\n' "$theme_dir" >&2
+    exit 1
+fi
+
+if ! theme_check_output=$("$theme_builder" check "$theme" 2>&1); then
+    printf '%s\n' "$theme_check_output" >&2
+    printf 'ERROR: generated files for %s do not match its profile.\n' \
+        "$theme" >&2
+    printf 'Run zenwolf-theme-build build %s after reviewing the profile.\n' \
+        "$theme" >&2
+    exit 1
+fi
+
+IFS=$'\t' read -r wallpaper expected_sha256 theme_mode \
+    < <("$theme_builder" metadata "$theme")
+
+if [[ ! -r "$wallpaper" ]]; then
+    printf 'ERROR: wallpaper is absent: %s\n' "$wallpaper" >&2
+    printf 'Restore the profile wallpaper before selecting this theme.\n' >&2
+    exit 1
+fi
+
+if [[ "$expected_sha256" != "-" ]] &&
+    ! printf '%s  %s\n' "$expected_sha256" "$wallpaper" \
+        | sha256sum --check --status; then
+    printf 'ERROR: wallpaper checksum does not match profile %s: %s\n' \
+        "$theme" "$wallpaper" >&2
+    exit 1
+fi
+
+install -d -m 755 "$config_root"
+ln -sfn "$theme_dir" "$config_root/current"
+
+# Hyprlock has no profile include of its own. Install the generated active
+# configuration so the next explicit Super+L follows the selected palette.
+install -m 644 "$theme_dir/hyprlock.conf" \
+    "$HOME/.config/hypr/hyprlock.conf"
+
+# Thunar is launched with GTK_THEME=Zenwolf. Publish the generated GTK 3
+# stylesheet at the named-theme path GTK searches, while keeping the override
+# scoped to Thunar rather than changing every GTK application in the session.
+# GTK 3 reads this file at process startup; an existing Thunar window keeps its
+# current palette until it is closed, and the next session reads this profile.
+install -d -m 755 "$HOME/.local/share/themes/Zenwolf/gtk-3.0"
+install -m 644 "$theme_dir/gtk.css" \
+    "$HOME/.local/share/themes/Zenwolf/gtk-3.0/gtk.css"
+
+# These passive files are useful even before their optional consumers are
+# installed. They remain generated state; profile.json is the durable source.
+install -d -m 755 "$HOME/.cache/wal"
+install -m 644 "$theme_dir/pywalfox-colors.json" \
+    "$HOME/.cache/wal/colors.json"
+
+install -d -m 755 "$HOME/.local/share/zenwolf/startpage"
+install -m 644 "$theme_dir/startpage.css" \
+    "$HOME/.local/share/zenwolf/startpage/theme.css"
+install -m 644 "$wallpaper" \
+    "$HOME/.local/share/zenwolf/startpage/wallpaper"
+
+install -d -m 755 "$HOME/.config/spicetify/Themes/Zenwolf"
+install -m 644 "$theme_dir/spicetify-color.ini" \
+    "$HOME/.config/spicetify/Themes/Zenwolf/color.ini"
+install -m 644 "$theme_dir/spicetify-user.css" \
+    "$HOME/.config/spicetify/Themes/Zenwolf/user.css"
+
+hyprctl_zenwolf() {
+    local signature="${HYPRLAND_INSTANCE_SIGNATURE:-}"
+    local wayland_display="${WAYLAND_DISPLAY:-}"
+
+    if [[ -z "$signature" ]]; then
+        signature="$(systemctl --user show-environment \
+            | sed -n 's/^HYPRLAND_INSTANCE_SIGNATURE=//p')"
+    fi
+
+    if [[ -z "$wayland_display" ]]; then
+        wayland_display="$(systemctl --user show-environment \
+            | sed -n 's/^WAYLAND_DISPLAY=//p')"
+    fi
+
+    [[ -n "$signature" ]] || return 1
+
+    HYPRLAND_INSTANCE_SIGNATURE="$signature" \
+    WAYLAND_DISPLAY="$wayland_display" \
+        /usr/bin/hyprctl "$@"
+}
+
+apply_wallpaper() {
+    local attempt
+
+    systemctl --user start zenwolf-hyprpaper.service
+
+    for attempt in {1..20}; do
+        if hyprctl_zenwolf hyprpaper wallpaper \
+            ",$wallpaper,cover" >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 0.1
+    done
+
+    printf 'ERROR: hyprpaper did not accept the new wallpaper.\n' >&2
+    return 1
+}
+
+# btop reloads its configuration on SIGUSR2, but it can retain a cached palette
+# when only the contents behind an unchanged theme name are replaced. Give
+# every profile a distinct theme name so the reloaded option also changes.
+install -d -m 755 "$HOME/.config/btop/themes"
+readonly btop_theme_name="zenwolf-$theme"
+install -m 644 "$theme_dir/btop.theme" \
+    "$HOME/.config/btop/themes/$btop_theme_name.theme"
+
+readonly -a btop_configs=(
+    "$HOME/.config/btop/btop.conf"
+    "$HOME/.config/btop/btop-gpu.conf"
+)
+
+for btop_config in "${btop_configs[@]}"; do
+    if [[ ! -f "$btop_config" ]]; then
+        printf 'ERROR: required btop configuration is missing: %s\n' \
+            "$btop_config" >&2
+        exit 1
+    fi
+
+    sed -i \
+        "s/^color_theme = .*/color_theme = \"$btop_theme_name\"/" \
+        "$btop_config"
+done
+
+# btop 1.4.7 handles SIGUSR2 by re-reading its configuration. Reload an open
+# monitor so its palette follows the selected profile without closing it.
+pkill -SIGUSR2 -x btop 2>/dev/null || true
+
+# Cava watches its active config when live-config is enabled. Replacing the
+# file applies the selected profile to an open visualizer without restarting
+# its Ghostty window or disturbing the audio scratchpad.
+install -d -m 755 "$HOME/.config/cava"
+install -m 644 "$theme_dir/cava.conf" "$HOME/.config/cava/config"
+
+# Keep hyprpaper alive and replace its image through IPC. Restarting the
+# process exposes Hyprland's built-in render-layer image between profiles and
+# can race with rapid shortcut presses.
+if pgrep -x Hyprland >/dev/null; then
+    apply_wallpaper
+    if ! hyprctl_zenwolf reload >/dev/null; then
+        printf 'ERROR: Hyprland did not reload the active theme module.\n' >&2
+        exit 1
+    fi
+fi
+
+# Waybar reloads its configuration and CSS in-process on SIGUSR2. This avoids
+# a stop/start storm (and systemd's start-rate limiter) when Super+W is pressed
+# several times quickly. The helper also starts a missing bar when necessary.
+"$HOME/.local/bin/zenwolf-waybar" reload
+
+# Rofi is a transient launcher and has no supported live theme-reload signal.
+# Close an open launcher; the next Super+Space invocation reads the new profile.
+pkill -TERM -x rofi 2>/dev/null || true
+
+# Ghostty's documented Linux reload signal re-reads the active profile. The
+# command is intentionally best-effort because a theme may be changed at TTY.
+pkill -USR2 -x ghostty 2>/dev/null || true
+
+# Firefox retains a local page's already-loaded stylesheet even after its file
+# is replaced. Publish a tiny revision marker only after the core theme assets
+# are in place. Visible Zenwolf startpages use it to reload CSS and wallpaper;
+# hidden pages wait until they become visible, and no background service runs.
+startpage_state="$(mktemp "$runtime_root/zenwolf-theme-state.XXXXXX")"
+printf 'window.zenwolfThemeState("%s");\n' "$(date +%s%N)" \
+    >"$startpage_state"
+install -m 644 "$startpage_state" \
+    "$HOME/.local/share/zenwolf/startpage/theme-state.js"
+rm -f "$startpage_state"
+
+# Spotify and Firefox are optional palette consumers. Their integration must
+# never roll back an otherwise valid desktop theme change.
+if [[ -x "$HOME/.local/bin/zenwolf-spicetify" ]] &&
+    [[ -x "$HOME/.spicetify/spicetify" || -x /usr/bin/spicetify ]]; then
+    if ! "$HOME/.local/bin/zenwolf-spicetify" refresh >/dev/null 2>&1; then
+        printf 'WARNING: Spotify theme refresh failed; run zenwolf-spicetify status.\n' >&2
+    fi
+fi
+
+if [[ -x "$HOME/.local/bin/pywalfox" ]]; then
+    if ! "$HOME/.local/bin/pywalfox" "$theme_mode" >/dev/null 2>&1 ||
+        ! "$HOME/.local/bin/pywalfox" update >/dev/null 2>&1; then
+        printf 'WARNING: Firefox theme refresh failed; inspect pywalfox log.\n' >&2
+    fi
+fi
+
+printf 'Zenwolf theme: %s\n' "$theme"
+printf 'Wallpaper: %s\n' "$wallpaper"

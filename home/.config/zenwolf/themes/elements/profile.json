@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "name": "Elements",
+  "mode": "light",
+  "cycle_order": 30,
+  "wallpaper": {
+    "path": "~/.local/share/zenwolf/wallpapers/elements.jpg",
+    "sha256": "fc2a3350fe49b9a526b106d46d095b7e4ff8d63c34faba710bcc9735ca242d40"
+  },
+  "palette": {
+    "background": "#f4e8d5",
+    "foreground": "#2d2925",
+    "muted": "#6f6457",
+    "accent": "#326d82",
+    "border": "#b8aa94",
+    "shadow": "#6f6457",
+    "selection_text": "#2d2925",
+    "urgent_text": "#fffaf1",
+    "waybar_surface": "#eadac2",
+    "waybar_surface_hover": "#d9c7aa",
+    "rofi_surface": "#fbf2e4",
+    "rofi_surface_hover": "#eadac2",
+    "rofi_selection": "#72b0c7",
+    "ghostty_cursor": "#326d82",
+    "ghostty_selection_background": "#72b0c7",
+    "ghostty_selection_foreground": "#2d2925",
+    "red": "#a84422",
+    "green": "#246b43",
+    "gold": "#805813",
+    "terminal": [
+      "#2d2925",
+      "#a84422",
+      "#246b43",
+      "#805813",
+      "#326d82",
+      "#85667d",
+      "#327c82",
+      "#dfcfb7",
+      "#6f6457",
+      "#cf6845",
+      "#4b9166",
+      "#ad7d2c",
+      "#72b0c7",
+      "#a47f9a",
+      "#7ccacf",
+      "#fffaf1"
+    ],
+    "btop_highlight": "#326d82",
+    "btop_selected_background": "#72b0c7",
+    "btop_selected_foreground": "#2d2925",
+    "btop_meter": "#dfcfb7",
+    "btop_divider": "#b8aa94",
+    "btop_gradient": ["#72b0c7", "#7ccacf", "#58a373"],
+    "cava_gradient": ["#72b0c7", "#ea9465", "#7ccacf", "#58a373"]
+  },
+  "opacity": {
+    "waybar": {
+      "background": 0.94,
+      "surface": 0.78,
+      "surface_hover": 0.88,
+      "shadow": 0.12
+    },
+    "rofi": {
+      "background": 0.96,
+      "surface": 0.96,
+      "surface_hover": 0.96,
+      "selection": 0.92
+    }
+  },
+  "appearance": {
+    "waybar": {
+      "panel_radius": 3,
+      "module_radius": 2,
+      "workspace_radius": 2,
+      "tooltip_radius": 3,
+      "shadow_y": 1,
+      "shadow_blur": 4
+    },
+    "rofi": {
+      "window_radius": 4,
+      "control_radius": 2
+    },
+    "ghostty": {
+      "background_opacity": 0.97
+    },
+    "hyprland": {
+      "rounding": 2,
+      "overlay_rounding": 3,
+      "border_size": 1,
+      "active_border_opacity": 0.85,
+      "inactive_border_opacity": 0.65
+    },
+    "hyprlock": {
+      "panel_width": 460,
+      "panel_height": 300,
+      "panel_x": -480,
+      "panel_y": 0,
+      "panel_radius": 4,
+      "panel_opacity": 0.90,
+      "input_width": 340,
+      "input_height": 54,
+      "input_x": -480,
+      "input_y": -60,
+      "input_radius": 2,
+      "input_opacity": 0.96,
+      "time_x": -480,
+      "time_y": 82,
+      "time_size": 64,
+      "identity_x": -480,
+      "identity_y": 28,
+      "identity_size": 16,
+      "background_brightness": 1.0
+    }
+  }
+}

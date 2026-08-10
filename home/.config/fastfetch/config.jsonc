@@ -1,0 +1,163 @@
+{
+  "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/master/doc/json_schema.json",
+  "logo": {
+    "source": "arch_small",
+    "position": "top",
+    "color": {
+      "1": "cyan"
+    },
+    "padding": {
+      "top": 1,
+      "right": 0
+    }
+  },
+  "display": {
+    "separator": "  ",
+    "brightColor": true,
+    "key": {
+      "width": 13
+    },
+    "size": {
+      "ndigits": 1
+    },
+    "percent": {
+      "type": ["num"],
+      "width": 0
+    }
+  },
+  "modules": [
+    {
+      "type": "custom",
+      "format": "󰣇  ZENWOLF  ∞",
+      "outputColor": "bright_cyan"
+    },
+    "break",
+    {
+      "type": "custom",
+      "format": "┌ HARDWARE",
+      "outputColor": "cyan"
+    },
+    {
+      "type": "host",
+      "key": "│ 󰌢 Host",
+      "keyColor": "bright_cyan",
+      "format": "{name}"
+    },
+    {
+      "type": "cpu",
+      "key": "│  CPU",
+      "keyColor": "bright_cyan",
+      "format": "{name}"
+    },
+    {
+      "type": "gpu",
+      "key": "│ 󰢮 dGPU",
+      "keyColor": "bright_cyan",
+      "hideType": "integrated",
+      "format": "{name}"
+    },
+    {
+      "type": "gpu",
+      "key": "│ 󰢮 iGPU",
+      "keyColor": "bright_cyan",
+      "hideType": "discrete",
+      "format": "{name}"
+    },
+    {
+      "type": "memory",
+      "key": "│  Memory",
+      "keyColor": "bright_cyan",
+      "format": "{used} / {total} ({percentage})"
+    },
+    {
+      "type": "disk",
+      "folders": "/",
+      "key": "│  Root",
+      "keyColor": "bright_cyan",
+      "format": "{size-used} / {size-total} ({size-percentage})"
+    },
+    {
+      "type": "display",
+      "key": "└ 󰍹 Display",
+      "keyColor": "bright_cyan",
+      "format": "{width}x{height} @ {refresh-rate} Hz"
+    },
+    "break",
+    {
+      "type": "custom",
+      "format": "┌ SOFTWARE",
+      "outputColor": "cyan"
+    },
+    {
+      "type": "os",
+      "key": "│ 󰣇 OS",
+      "keyColor": "bright_cyan"
+    },
+    {
+      "type": "kernel",
+      "key": "│  Kernel",
+      "keyColor": "bright_cyan",
+      "format": "{release}"
+    },
+    {
+      "type": "packages",
+      "key": "│ 󰏖 Packages",
+      "keyColor": "bright_cyan"
+    },
+    {
+      "type": "shell",
+      "key": "│  Shell",
+      "keyColor": "bright_cyan"
+    },
+    {
+      "type": "terminal",
+      "key": "│  Terminal",
+      "keyColor": "bright_cyan"
+    },
+    {
+      "type": "wm",
+      "key": "│  WM",
+      "keyColor": "bright_cyan"
+    },
+    {
+      "type": "uptime",
+      "key": "└  Uptime",
+      "keyColor": "bright_cyan"
+    },
+    "break",
+    {
+      "type": "custom",
+      "format": "┌ STATUS",
+      "outputColor": "cyan"
+    },
+    {
+      "type": "localip",
+      "key": "│ 󰩟 Network",
+      "keyColor": "bright_cyan",
+      "format": "{ipv4} ({ifname})"
+    },
+    {
+      "type": "battery",
+      "key": "│  Battery",
+      "keyColor": "bright_cyan",
+      "percent": {
+        "green": 76,
+        "yellow": 15,
+        "type": ["num"]
+      },
+      "format": "{capacity} · {status}"
+    },
+    {
+      "type": "swap",
+      "key": "└ 󰓡 zram",
+      "keyColor": "bright_cyan",
+      "format": "{used} / {total} ({percentage})"
+    },
+    "break",
+    {
+      "type": "custom",
+      "format": "{#blue}●  {#red}●  {#white}●  {#green}●",
+      "outputColor": "cyan"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+[Unit]
+Description=Zenwolf Waybar
+Documentation=man:waybar(5)
+
+[Service]
+ExecStart=/usr/bin/waybar
+Restart=on-failure
+RestartSec=2

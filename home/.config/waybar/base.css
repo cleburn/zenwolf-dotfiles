@@ -1,0 +1,161 @@
+* {
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+  font-family: "JetBrainsMono Nerd Font Mono", "Font Awesome 7 Free";
+  font-size: 14px;
+  font-weight: 600;
+}
+
+window#waybar {
+  background: transparent;
+  color: @foreground;
+}
+
+.modules-left,
+.modules-center,
+.modules-right {
+  min-height: 36px;
+  padding: 0 7px;
+  background: @background;
+  border: 1px solid @border;
+  border-radius: 11px;
+  box-shadow: 0 2px 8px @shadow;
+}
+
+button {
+  box-shadow: none;
+  text-shadow: none;
+  transition: none;
+}
+
+button:hover {
+  background: @surface_hover;
+  box-shadow: none;
+}
+
+#workspaces {
+  margin: 0 4px 0 0;
+}
+
+#workspaces button {
+  min-width: 26px;
+  margin: 4px 2px;
+  padding: 0 8px;
+  color: @muted;
+  background: transparent;
+  border-radius: 7px;
+}
+
+#workspaces button.persistent {
+  color: @foreground;
+}
+
+#workspaces button.active {
+  color: @selection_text;
+  background: @accent;
+}
+
+#workspaces button.urgent {
+  color: #f9fafb;
+  background: @red;
+}
+
+#window {
+  padding: 0 10px;
+  color: @foreground;
+}
+
+window#waybar.empty #window {
+  color: @muted;
+}
+
+#clock {
+  padding: 0 13px;
+  color: @accent;
+}
+
+#custom-zenwolf-theme,
+#bluetooth,
+#network,
+#pulseaudio,
+#backlight,
+#battery,
+#tray {
+  margin: 4px 2px;
+  padding: 0 9px;
+  background: @surface;
+  border-radius: 7px;
+}
+
+#custom-zenwolf-theme {
+  padding: 0 11px;
+  color: @accent;
+  font-size: 18px;
+}
+
+#custom-zenwolf-theme:hover {
+  background: @surface_hover;
+}
+
+#bluetooth,
+#network {
+  color: @accent;
+}
+
+#bluetooth.connected {
+  color: @green;
+}
+
+#bluetooth.discovering {
+  color: @gold;
+}
+
+#bluetooth.disabled,
+#bluetooth.off,
+#bluetooth.no-controller,
+#network.disconnected,
+#network.disabled {
+  color: @red;
+}
+
+#pulseaudio,
+#backlight {
+  color: @foreground;
+}
+
+#pulseaudio.muted {
+  color: @gold;
+}
+
+#battery {
+  color: @green;
+}
+
+#battery.warning {
+  color: @gold;
+}
+
+#battery.critical:not(.charging) {
+  color: @red;
+}
+
+#tray > .passive {
+  -gtk-icon-effect: dim;
+}
+
+#tray > .needs-attention {
+  -gtk-icon-effect: highlight;
+  background: @red;
+}
+
+tooltip {
+  padding: 7px;
+  background: @background;
+  border: 1px solid @border;
+  border-radius: 9px;
+}
+
+tooltip label {
+  color: @foreground;
+}

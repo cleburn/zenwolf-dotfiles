@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly runtime_root="${XDG_RUNTIME_DIR:-/run/user/$UID}"
+readonly request_file="$runtime_root/zenwolf-session.request"
+readonly gaming_service='zenwolf-nvidia-gaming.service'
+readonly exit_helper="$HOME/.local/bin/zenwolf-exit-desktop"
+
+readonly zen_entry='<span size="x-large" weight="bold">ZEN</span>  <span size="small">AMD · BALANCED</span>'
+readonly game_entry='<span size="x-large" weight="bold">GAME</span>  <span size="small">NVIDIA · MAX POWER</span>'
+
+readonly rofi_layout='
+window {
+    width: 100%;
+    height: 100%;
+    location: center;
+    anchor: center;
+    border: 0;
+    border-radius: 0;
+    background-color: @background;
+}
+mainbox {
+    children: [ spacer-top, session-content, spacer-bottom ];
+    padding: 0 390px;
+    background-color: @background;
+}
+spacer-top, spacer-bottom {
+    expand: true;
+    background-color: @background;
+}
+session-content {
+    children: [ message, listview ];
+    expand: false;
+    spacing: 36px;
+    background-color: @background;
+}
+message {
+    padding: 16px 0;
+    background-color: @background;
+    border: 0;
+}
+textbox {
+    horizontal-align: 0.5;
+    text-color: @foreground;
+    background-color: transparent;
+    font: "JetBrainsMono Nerd Font Mono 28";
+}
+listview {
+    columns: 2;
+    lines: 1;
+    fixed-height: true;
+    spacing: 24px;
+    border: 0;
+    scrollbar: false;
+    background-color: @background;
+}
+element {
+    padding: 26px 28px;
+    border: 2px solid;
+    border-color: @panel-border;
+    border-radius: 0;
+    background-color: @surface;
+}
+element-text {
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+    background-color: transparent;
+    font: "JetBrainsMono Nerd Font Mono 20";
+}
+element normal.active {
+    text-color: @accent;
+    border-color: @accent;
+}
+element selected.active {
+    text-color: @selection-text;
+    background-color: @selection;
+    border-color: @accent;
+}
+element normal.urgent {
+    text-color: @green;
+    border-color: @green;
+}
+element selected.urgent {
+    text-color: @urgent-text;
+    background-color: @green;
+    border-color: @green;
+}
+inputbar {
+    enabled: false;
+}
+'
+
+usage() {
+    printf 'Usage: zenwolf-session {menu|status}\n'
+}
+
+current_session() {
+    if systemctl is-active --quiet "$gaming_service"; then
+        printf 'game\n'
+    else
+        printf 'zen\n'
+    fi
+}
+
+ac_online() {
+    local supply
+
+    for supply in /sys/class/power_supply/*; do
+        [[ -r "$supply/type" && -r "$supply/online" ]] || continue
+        [[ "$(<"$supply/type")" == 'Mains' ]] || continue
+        [[ "$(<"$supply/online")" == '1' ]] && return 0
+    done
+    return 1
+}
+
+surface() {
+    local message="$1"
+    local selected_row="$2"
+
+    rofi -dmenu -i -no-custom -markup-rows \
+        -mesg "$message" \
+        -selected-row "$selected_row" \
+        -a 0 -u 1 \
+        -theme-str "$rofi_layout"
+}
+
+confirm_transition() {
+    local target="$1"
+    local answer
+    local message
+
+    message="<b>SWITCH TO ${target^^}?</b>"$'\n''<span size="small">Save your work. Every open application will close before the new desktop starts.</span>'
+    answer=$(printf '%s\n' \
+        '<span size="x-large" weight="bold">CANCEL</span>' \
+        '<span size="x-large" weight="bold">CONFIRM</span>' \
+        | surface "$message" 0) || return 1
+
+    [[ "$answer" == *'>CONFIRM<'* ]]
+}
+
+show_battery_notice() {
+    printf '%s\n' '<span size="x-large" weight="bold">BACK</span>' \
+        | surface \
+            $'<b>AC POWER REQUIRED</b>\n<span size="small">Connect the charger before entering the NVIDIA gaming session.</span>' \
+            0 \
+        >/dev/null || true
+}
+
+request_transition() {
+    local target="$1"
+    local temporary="$request_file.$$"
+
+    umask 077
+    printf '%s\n' "$target" >"$temporary"
+    mv -f "$temporary" "$request_file"
+
+    if ! "$exit_helper"; then
+        rm -f "$request_file"
+        printf 'ERROR: the desktop did not accept the session transition.\n' >&2
+        return 1
+    fi
+}
+
+open_menu() {
+    local choice current message selected target
+
+    exec 9>"$runtime_root/zenwolf-session.lock"
+    flock -n 9 || return 0
+
+    current="$(current_session)"
+    if [[ "$current" == 'game' ]]; then
+        selected='1'
+        message=$'<b>∞  ZENWOLF</b>\n<span size="small">GAME SESSION ACTIVE · NVIDIA AVAILABLE</span>'
+    else
+        selected='0'
+        message=$'<b>∞  ZENWOLF</b>\n<span size="small">ZEN SESSION ACTIVE · AMD BALANCED</span>'
+    fi
+
+    choice=$(printf '%s\n' "$zen_entry" "$game_entry" \
+        | surface "$message" "$selected") || return 0
+
+    case "$choice" in
+        "$zen_entry") target='zen' ;;
+        "$game_entry") target='game' ;;
+        *) return 0 ;;
+    esac
+
+    [[ "$target" != "$current" ]] || return 0
+
+    if [[ "$target" == 'game' ]] && ! ac_online; then
+        show_battery_notice
+        return 0
+    fi
+
+    confirm_transition "$target" || return 0
+    request_transition "$target"
+}
+
+case "${1:-menu}" in
+    menu)
+        open_menu
+        ;;
+    status)
+        current_session
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac

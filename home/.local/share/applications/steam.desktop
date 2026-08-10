@@ -1,0 +1,28 @@
+[Desktop Entry]
+Name=Steam
+Comment=Manage and play Steam games through Zenwolf's desktop-aware GPU boundary
+Exec=steam %U
+Icon=steam
+TryExec=steam
+Terminal=false
+Type=Application
+Categories=Game;
+MimeType=x-scheme-handler/steam;x-scheme-handler/steamlink;
+Actions=Store;Library;Settings;Friends;
+PrefersNonDefaultGPU=false
+
+[Desktop Action Store]
+Name=Store
+Exec=steam steam://store
+
+[Desktop Action Library]
+Name=Library
+Exec=steam steam://open/games
+
+[Desktop Action Settings]
+Name=Settings
+Exec=steam steam://open/settings
+
+[Desktop Action Friends]
+Name=Friends
+Exec=steam steam://open/friends

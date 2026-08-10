@@ -1,0 +1,11 @@
+[Unit]
+Description=Zenwolf on-demand high-performance NVIDIA gaming mode
+Documentation=https://download.nvidia.com/XFree86/Linux-x86_64/610.43.02/README/dynamicboost.html
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/libexec/zenwolf-nvidia-gaming start
+ExecStop=/usr/local/libexec/zenwolf-nvidia-gaming stop
+TimeoutStartSec=30
+TimeoutStopSec=30

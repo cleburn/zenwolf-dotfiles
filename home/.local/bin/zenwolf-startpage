@@ -1,0 +1,216 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly app_root="$HOME/.local/share/zenwolf/startpage"
+readonly docs_root="$app_root/docs"
+readonly repo_root="${ZENWOLF_DOTFILES_ROOT:-$HOME/repos/zenwolf-dotfiles}"
+readonly runtime_root="${XDG_RUNTIME_DIR:-/tmp}"
+readonly begin_marker='// BEGIN ZENWOLF STARTPAGE'
+readonly end_marker='// END ZENWOLF STARTPAGE'
+
+temporary=''
+cleanup() {
+    [[ -z "$temporary" || ! -d "$temporary" ]] || rm -rf "$temporary"
+}
+trap cleanup EXIT
+
+usage() {
+    printf 'Usage: zenwolf-startpage {install|refresh|status|homepage}\n'
+}
+
+require_assets() {
+    local asset
+
+    for asset in index.html app.js base.css theme.css theme-watch.js; do
+        if [[ ! -r "$app_root/$asset" ]]; then
+            printf 'ERROR: startpage asset is absent: %s\n' "$app_root/$asset" >&2
+            return 1
+        fi
+    done
+}
+
+require_documents() {
+    local document
+
+    for document in build-guide cheatsheet; do
+        if [[ ! -r "$docs_root/$document.html" ]]; then
+            printf 'ERROR: rendered startpage document is absent: %s\n' \
+                "$docs_root/$document.html" >&2
+            return 1
+        fi
+    done
+}
+
+render_document() {
+    local source="$1"
+    local slug="$2"
+    local title="$3"
+    local output="$temporary/$slug.html"
+
+    if [[ ! -r "$source" ]]; then
+        printf 'ERROR: documentation source is absent: %s\n' "$source" >&2
+        return 1
+    fi
+
+    {
+        printf '%s\n' '<!doctype html>'
+        printf '%s\n' '<html lang="en"><head>'
+        printf '%s\n' '  <meta charset="utf-8">'
+        printf '%s\n' '  <meta name="viewport" content="width=device-width, initial-scale=1">'
+        printf '  <title>%s — Zenwolf</title>\n' "$title"
+        printf '%s\n' '  <link rel="stylesheet" href="../theme.css" data-zenwolf-theme>'
+        printf '%s\n' '  <link rel="stylesheet" href="../base.css">'
+        printf '%s\n' '  <script src="../theme-watch.js" defer></script>'
+        printf '%s\n' '</head><body class="reader"><div class="reader-shell">'
+        printf '%s\n' '<nav class="reader-nav" aria-label="Zenwolf documents">'
+        printf '%s\n' '  <a class="brand" href="../index.html">← zenwolf</a>'
+        printf '%s\n' '  <a href="build-guide.html">Build guide</a>'
+        printf '%s\n' '  <a href="cheatsheet.html">Daily cheatsheet</a>'
+        printf '%s\n' '</nav><article class="reader-article">'
+        # Canonical Markdown links to the build-guide source. The deployed reader
+        # uses the generated sibling document instead.
+        cmark-gfm --unsafe --smart \
+            --extension table \
+            --extension autolink \
+            --extension strikethrough \
+            --extension tasklist \
+            "$source" \
+            | sed 's/href="build-guide\.md/href="build-guide.html/g'
+        printf '%s\n' '</article></div></body></html>'
+    } >"$output"
+}
+
+refresh_docs() {
+    command -v cmark-gfm >/dev/null || {
+        printf 'ERROR: cmark-gfm is required to render Zenwolf documentation.\n' >&2
+        return 1
+    }
+    require_assets
+
+    if [[ ! -r "$repo_root/docs/build-guide.md" || \
+        ! -r "$repo_root/docs/cheatsheet.md" ]]; then
+        printf 'ERROR: Zenwolf Markdown sources were not found under %s\n' \
+            "$repo_root" >&2
+        printf 'Set ZENWOLF_DOTFILES_ROOT to a staged repository source tree.\n' >&2
+        return 1
+    fi
+
+    temporary="$(mktemp -d "$runtime_root/zenwolf-startpage.XXXXXX")"
+    render_document "$repo_root/docs/build-guide.md" build-guide 'Build guide'
+    render_document "$repo_root/docs/cheatsheet.md" cheatsheet 'Daily cheatsheet'
+
+    install -d -m 755 "$docs_root"
+    install -m 644 \
+        "$temporary/build-guide.html" \
+        "$temporary/cheatsheet.html" \
+        "$docs_root/"
+
+    rm -rf "$temporary"
+    temporary=''
+
+    printf 'Refreshed Zenwolf startpage documents from %s\n' "$repo_root"
+}
+
+firefox_profile() {
+    local profile relative root
+
+    for root in \
+        "$HOME/.config/mozilla/firefox" \
+        "$HOME/.mozilla/firefox" \
+        "$HOME/.config/firefox"; do
+        [[ -r "$root/profiles.ini" ]] || continue
+        relative="$(awk -F= '$1 == "Default" { print $2; exit }' "$root/profiles.ini")"
+        profile="$root/$relative"
+        if [[ -n "$relative" && -d "$profile" ]]; then
+            printf '%s\n' "$profile"
+            return 0
+        fi
+    done
+
+    printf 'ERROR: the default Firefox profile was not found.\n' >&2
+    return 1
+}
+
+install_homepage() {
+    local homepage profile user_js
+
+    require_assets
+    require_documents
+    profile="$(firefox_profile)"
+    user_js="$profile/user.js"
+    homepage="file://$app_root/index.html"
+
+    temporary="$(mktemp -d "$runtime_root/zenwolf-startpage.XXXXXX")"
+    if [[ -r "$user_js" ]]; then
+        awk -v begin="$begin_marker" -v end="$end_marker" '
+            $0 == begin { managed = 1; next }
+            $0 == end { managed = 0; next }
+            !managed { print }
+        ' "$user_js" >"$temporary/user.js"
+    else
+        : >"$temporary/user.js"
+    fi
+
+    {
+        printf '\n%s\n' "$begin_marker"
+        printf 'user_pref("browser.startup.homepage", "%s");\n' "$homepage"
+        printf '%s\n' 'user_pref("browser.startup.page", 1);'
+        printf '%s\n' "$end_marker"
+    } >>"$temporary/user.js"
+
+    install -m 600 "$temporary/user.js" "$user_js"
+    printf 'Installed Zenwolf as the Firefox homepage for %s\n' "$profile"
+    printf 'Restart Firefox once to load the managed homepage preference.\n'
+}
+
+status() {
+    local file missing='0' profile
+
+    for file in \
+        "$app_root/index.html" \
+        "$app_root/app.js" \
+        "$app_root/base.css" \
+        "$app_root/theme.css" \
+        "$app_root/theme-watch.js" \
+        "$app_root/theme-state.js" \
+        "$app_root/wallpaper" \
+        "$docs_root/build-guide.html" \
+        "$docs_root/cheatsheet.html"; do
+        if [[ ! -r "$file" ]]; then
+            printf 'missing: %s\n' "$file"
+            missing='1'
+        fi
+    done
+
+    profile="$(firefox_profile)" || missing='1'
+    if [[ -n "${profile:-}" ]] && \
+        grep -Fxq "$begin_marker" "$profile/user.js" 2>/dev/null; then
+        printf 'homepage: configured\n'
+    else
+        printf 'homepage: not configured\n'
+        missing='1'
+    fi
+
+    printf 'location: file://%s/index.html\n' "$app_root"
+    [[ "$missing" == '0' ]]
+}
+
+case "${1:-status}" in
+    install)
+        install_homepage
+        ;;
+    refresh)
+        refresh_docs
+        ;;
+    status)
+        status
+        ;;
+    homepage)
+        printf 'file://%s/index.html\n' "$app_root"
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac

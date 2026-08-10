@@ -1,0 +1,650 @@
+#!/usr/bin/env python3
+
+"""Build Zenwolf consumer themes from one validated profile palette."""
+
+from __future__ import annotations
+
+import argparse
+import difflib
+import json
+import os
+from pathlib import Path
+import re
+import tempfile
+from typing import Any
+
+
+OUTPUT_TEMPLATES = {
+    "waybar.css": "waybar.css.tmpl",
+    "waybar-layout.css": "waybar-layout.css.tmpl",
+    "ghostty.conf": "ghostty.conf.tmpl",
+    "rofi.rasi": "rofi.rasi.tmpl",
+    "gtk.css": "gtk.css.tmpl",
+    "btop.theme": "btop.theme.tmpl",
+    "cava.conf": "cava.conf.tmpl",
+    "hyprpaper.conf": "hyprpaper.conf.tmpl",
+    "hyprland.lua": "hyprland.lua.tmpl",
+    "hyprlock.conf": "hyprlock.conf.tmpl",
+    "spicetify-color.ini": "spicetify-color.ini.tmpl",
+    "spicetify-user.css": "spicetify-user.css.tmpl",
+    "pywalfox-colors.json": "pywalfox-colors.json.tmpl",
+    "startpage.css": "startpage.css.tmpl",
+}
+
+TOP_LEVEL_KEYS = {
+    "schema_version",
+    "name",
+    "mode",
+    "cycle_order",
+    "wallpaper",
+    "palette",
+    "opacity",
+    "appearance",
+}
+
+WALLPAPER_KEYS = {"path", "sha256"}
+
+PALETTE_KEYS = {
+    "background",
+    "foreground",
+    "muted",
+    "accent",
+    "border",
+    "shadow",
+    "selection_text",
+    "urgent_text",
+    "waybar_surface",
+    "waybar_surface_hover",
+    "rofi_surface",
+    "rofi_surface_hover",
+    "rofi_selection",
+    "ghostty_cursor",
+    "ghostty_selection_background",
+    "ghostty_selection_foreground",
+    "red",
+    "green",
+    "gold",
+    "terminal",
+    "btop_highlight",
+    "btop_selected_background",
+    "btop_selected_foreground",
+    "btop_meter",
+    "btop_divider",
+    "btop_gradient",
+    "cava_gradient",
+}
+
+OPACITY_KEYS = {"waybar", "rofi"}
+WAYBAR_OPACITY_KEYS = {"background", "surface", "surface_hover", "shadow"}
+ROFI_OPACITY_KEYS = {"background", "surface", "surface_hover", "selection"}
+
+APPEARANCE_KEYS = {"waybar", "rofi", "ghostty", "hyprland", "hyprlock"}
+WAYBAR_APPEARANCE_KEYS = {
+    "panel_radius",
+    "module_radius",
+    "workspace_radius",
+    "tooltip_radius",
+    "shadow_y",
+    "shadow_blur",
+}
+ROFI_APPEARANCE_KEYS = {"window_radius", "control_radius"}
+GHOSTTY_APPEARANCE_KEYS = {"background_opacity"}
+HYPRLAND_APPEARANCE_KEYS = {
+    "rounding",
+    "overlay_rounding",
+    "border_size",
+    "active_border_opacity",
+    "inactive_border_opacity",
+}
+HYPRLOCK_APPEARANCE_KEYS = {
+    "panel_width",
+    "panel_height",
+    "panel_x",
+    "panel_y",
+    "panel_radius",
+    "panel_opacity",
+    "input_width",
+    "input_height",
+    "input_x",
+    "input_y",
+    "input_radius",
+    "input_opacity",
+    "time_x",
+    "time_y",
+    "time_size",
+    "identity_x",
+    "identity_y",
+    "identity_size",
+    "background_brightness",
+}
+
+HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
+SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
+TOKEN = re.compile(r"@([A-Z][A-Z0-9_]*)@")
+
+
+class ProfileError(ValueError):
+    """Raised when a profile cannot safely generate consumer files."""
+
+
+def exact_keys(value: Any, expected: set[str], label: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ProfileError(f"{label} must be a JSON object")
+
+    actual = set(value)
+    missing = sorted(expected - actual)
+    unknown = sorted(actual - expected)
+    problems = []
+    if missing:
+        problems.append(f"missing {', '.join(missing)}")
+    if unknown:
+        problems.append(f"unknown {', '.join(unknown)}")
+    if problems:
+        raise ProfileError(f"{label}: {'; '.join(problems)}")
+    return value
+
+
+def color(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not HEX_COLOR.fullmatch(value):
+        raise ProfileError(f"{label} must be a color such as #1a2b3c")
+    return value.lower()
+
+
+def color_list(value: Any, length: int, label: str) -> list[str]:
+    if not isinstance(value, list) or len(value) != length:
+        raise ProfileError(f"{label} must contain exactly {length} colors")
+    return [color(item, f"{label}[{index}]") for index, item in enumerate(value)]
+
+
+def opacity(value: Any, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ProfileError(f"{label} must be a number from 0 through 1")
+    result = float(value)
+    if not 0 <= result <= 1:
+        raise ProfileError(f"{label} must be a number from 0 through 1")
+    return result
+
+
+def nonnegative_integer(value: Any, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 5000:
+        raise ProfileError(f"{label} must be an integer from 0 through 5000")
+    return value
+
+
+def integer(value: Any, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not -5000 <= value <= 5000:
+        raise ProfileError(f"{label} must be an integer from -5000 through 5000")
+    return value
+
+
+def alpha_hex(value: float) -> str:
+    return f"{int(value * 255 + 0.5):02x}"
+
+
+def relative_luminance(value: str) -> float:
+    channels = []
+    for start in (1, 3, 5):
+        channel = int(value[start : start + 2], 16) / 255
+        channels.append(
+            channel / 12.92
+            if channel <= 0.04045
+            else ((channel + 0.055) / 1.055) ** 2.4
+        )
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+
+def contrast_ratio(first: str, second: str) -> float:
+    lighter, darker = sorted(
+        (relative_luminance(first), relative_luminance(second)), reverse=True
+    )
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def require_contrast(
+    foreground: str,
+    background: str,
+    minimum: float,
+    label: str,
+) -> None:
+    ratio = contrast_ratio(foreground, background)
+    if ratio < minimum:
+        raise ProfileError(
+            f"{label} contrast is {ratio:.2f}:1; required minimum is {minimum:.1f}:1"
+        )
+
+
+def rgba(value: str, alpha: float) -> str:
+    red = int(value[1:3], 16)
+    green = int(value[3:5], 16)
+    blue = int(value[5:7], 16)
+    alpha_text = f"{alpha:.3f}".rstrip("0").rstrip(".")
+    return f"rgba({red}, {green}, {blue}, {alpha_text})"
+
+
+def hypr_rgba(value: str, alpha: float) -> str:
+    return f"rgba({value[1:]}{alpha_hex(alpha)})"
+
+
+def load_profile(path: Path) -> dict[str, Any]:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as error:
+        raise ProfileError(f"missing profile: {path}") from error
+    except json.JSONDecodeError as error:
+        raise ProfileError(
+            f"{path}:{error.lineno}:{error.colno}: {error.msg}"
+        ) from error
+
+    profile = exact_keys(raw, TOP_LEVEL_KEYS, str(path))
+
+    if profile["schema_version"] != 1:
+        raise ProfileError(f"{path}: schema_version must be 1")
+    if not isinstance(profile["name"], str) or not profile["name"].strip():
+        raise ProfileError(f"{path}: name must be a non-empty string")
+    if profile["mode"] not in {"light", "dark"}:
+        raise ProfileError(f"{path}: mode must be light or dark")
+    profile["cycle_order"] = nonnegative_integer(
+        profile["cycle_order"], f"{path}: cycle_order"
+    )
+
+    wallpaper = exact_keys(profile["wallpaper"], WALLPAPER_KEYS, f"{path}: wallpaper")
+    if not isinstance(wallpaper["path"], str) or not wallpaper["path"].strip():
+        raise ProfileError(f"{path}: wallpaper.path must be a non-empty string")
+    checksum = wallpaper["sha256"]
+    if checksum is not None and (
+        not isinstance(checksum, str) or not SHA256.fullmatch(checksum)
+    ):
+        raise ProfileError(f"{path}: wallpaper.sha256 must be null or 64 hex digits")
+
+    palette = exact_keys(profile["palette"], PALETTE_KEYS, f"{path}: palette")
+    for key in PALETTE_KEYS - {
+        "terminal",
+        "btop_gradient",
+        "cava_gradient",
+    }:
+        palette[key] = color(palette[key], f"{path}: palette.{key}")
+    palette["terminal"] = color_list(
+        palette["terminal"], 16, f"{path}: palette.terminal"
+    )
+    palette["btop_gradient"] = color_list(
+        palette["btop_gradient"], 3, f"{path}: palette.btop_gradient"
+    )
+    palette["cava_gradient"] = color_list(
+        palette["cava_gradient"], 4, f"{path}: palette.cava_gradient"
+    )
+    require_contrast(
+        palette["foreground"],
+        palette["background"],
+        4.5,
+        f"{path}: foreground/background",
+    )
+    require_contrast(
+        palette["selection_text"],
+        palette["rofi_selection"],
+        4.5,
+        f"{path}: selection_text/rofi_selection",
+    )
+    require_contrast(
+        palette["urgent_text"],
+        palette["red"],
+        3.0,
+        f"{path}: urgent_text/red",
+    )
+
+    opacity_groups = exact_keys(profile["opacity"], OPACITY_KEYS, f"{path}: opacity")
+    waybar = exact_keys(
+        opacity_groups["waybar"], WAYBAR_OPACITY_KEYS, f"{path}: opacity.waybar"
+    )
+    rofi = exact_keys(
+        opacity_groups["rofi"], ROFI_OPACITY_KEYS, f"{path}: opacity.rofi"
+    )
+    for key in WAYBAR_OPACITY_KEYS:
+        waybar[key] = opacity(waybar[key], f"{path}: opacity.waybar.{key}")
+    for key in ROFI_OPACITY_KEYS:
+        rofi[key] = opacity(rofi[key], f"{path}: opacity.rofi.{key}")
+
+    appearance = exact_keys(profile["appearance"], APPEARANCE_KEYS, f"{path}: appearance")
+    waybar_appearance = exact_keys(
+        appearance["waybar"],
+        WAYBAR_APPEARANCE_KEYS,
+        f"{path}: appearance.waybar",
+    )
+    rofi_appearance = exact_keys(
+        appearance["rofi"],
+        ROFI_APPEARANCE_KEYS,
+        f"{path}: appearance.rofi",
+    )
+    ghostty_appearance = exact_keys(
+        appearance["ghostty"],
+        GHOSTTY_APPEARANCE_KEYS,
+        f"{path}: appearance.ghostty",
+    )
+    hyprland_appearance = exact_keys(
+        appearance["hyprland"],
+        HYPRLAND_APPEARANCE_KEYS,
+        f"{path}: appearance.hyprland",
+    )
+    hyprlock_appearance = exact_keys(
+        appearance["hyprlock"],
+        HYPRLOCK_APPEARANCE_KEYS,
+        f"{path}: appearance.hyprlock",
+    )
+    for key in WAYBAR_APPEARANCE_KEYS:
+        waybar_appearance[key] = nonnegative_integer(
+            waybar_appearance[key], f"{path}: appearance.waybar.{key}"
+        )
+    for key in ROFI_APPEARANCE_KEYS:
+        rofi_appearance[key] = nonnegative_integer(
+            rofi_appearance[key], f"{path}: appearance.rofi.{key}"
+        )
+    ghostty_appearance["background_opacity"] = opacity(
+        ghostty_appearance["background_opacity"],
+        f"{path}: appearance.ghostty.background_opacity",
+    )
+    for key in {"rounding", "overlay_rounding", "border_size"}:
+        hyprland_appearance[key] = nonnegative_integer(
+            hyprland_appearance[key], f"{path}: appearance.hyprland.{key}"
+        )
+    for key in {"active_border_opacity", "inactive_border_opacity"}:
+        hyprland_appearance[key] = opacity(
+            hyprland_appearance[key], f"{path}: appearance.hyprland.{key}"
+        )
+    for key in {
+        "panel_width",
+        "panel_height",
+        "panel_radius",
+        "input_width",
+        "input_height",
+        "input_radius",
+        "time_size",
+        "identity_size",
+    }:
+        hyprlock_appearance[key] = nonnegative_integer(
+            hyprlock_appearance[key], f"{path}: appearance.hyprlock.{key}"
+        )
+    for key in {
+        "panel_x",
+        "panel_y",
+        "input_x",
+        "input_y",
+        "time_x",
+        "time_y",
+        "identity_x",
+        "identity_y",
+    }:
+        hyprlock_appearance[key] = integer(
+            hyprlock_appearance[key], f"{path}: appearance.hyprlock.{key}"
+        )
+    for key in {"panel_opacity", "input_opacity", "background_brightness"}:
+        hyprlock_appearance[key] = opacity(
+            hyprlock_appearance[key], f"{path}: appearance.hyprlock.{key}"
+        )
+
+    return profile
+
+
+def template_values(profile: dict[str, Any]) -> dict[str, str]:
+    palette = profile["palette"]
+    waybar_opacity = profile["opacity"]["waybar"]
+    rofi_opacity = profile["opacity"]["rofi"]
+    appearance = profile["appearance"]
+
+    values = {
+        "BACKGROUND": palette["background"],
+        "FOREGROUND": palette["foreground"],
+        "MUTED": palette["muted"],
+        "ACCENT": palette["accent"],
+        "BORDER": palette["border"],
+        "SHADOW": palette["shadow"],
+        "SELECTION_TEXT": palette["selection_text"],
+        "URGENT_TEXT": palette["urgent_text"],
+        "GHOSTTY_CURSOR": palette["ghostty_cursor"],
+        "GHOSTTY_SELECTION_BACKGROUND": palette["ghostty_selection_background"],
+        "GHOSTTY_SELECTION_FOREGROUND": palette["ghostty_selection_foreground"],
+        "RED": palette["red"],
+        "GREEN": palette["green"],
+        "GOLD": palette["gold"],
+        "WAYBAR_BACKGROUND": rgba(palette["background"], waybar_opacity["background"]),
+        "WAYBAR_SURFACE_COLOR": palette["waybar_surface"],
+        "WAYBAR_SURFACE": rgba(palette["waybar_surface"], waybar_opacity["surface"]),
+        "WAYBAR_SURFACE_HOVER": rgba(
+            palette["waybar_surface_hover"], waybar_opacity["surface_hover"]
+        ),
+        "WAYBAR_SHADOW": rgba(palette["shadow"], waybar_opacity["shadow"]),
+        "ROFI_BACKGROUND": palette["background"]
+        + alpha_hex(rofi_opacity["background"]),
+        "ROFI_SURFACE_COLOR": palette["rofi_surface"],
+        "ROFI_SURFACE_HOVER_COLOR": palette["rofi_surface_hover"],
+        "ROFI_SURFACE": palette["rofi_surface"] + alpha_hex(rofi_opacity["surface"]),
+        "ROFI_SURFACE_HOVER": palette["rofi_surface_hover"]
+        + alpha_hex(rofi_opacity["surface_hover"]),
+        "ROFI_SELECTION": palette["rofi_selection"]
+        + alpha_hex(rofi_opacity["selection"]),
+        "ROFI_SELECTION_COLOR": palette["rofi_selection"],
+        "BTP_HIGHLIGHT": palette["btop_highlight"],
+        "BTP_SELECTED_BACKGROUND": palette["btop_selected_background"],
+        "BTP_SELECTED_FOREGROUND": palette["btop_selected_foreground"],
+        "BTP_METER": palette["btop_meter"],
+        "BTP_DIVIDER": palette["btop_divider"],
+        "WALLPAPER": profile["wallpaper"]["path"],
+        "WALLPAPER_JSON": json.dumps(profile["wallpaper"]["path"]),
+        "THEME_MODE": profile["mode"],
+        "GTK_THEME_IMPORT": (
+            "resource:///org/gtk/libgtk/theme/Adwaita/gtk-contained-dark.css"
+            if profile["mode"] == "dark"
+            else "resource:///org/gtk/libgtk/theme/Adwaita/gtk-contained.css"
+        ),
+        "WAYBAR_PANEL_RADIUS": str(appearance["waybar"]["panel_radius"]),
+        "WAYBAR_MODULE_RADIUS": str(appearance["waybar"]["module_radius"]),
+        "WAYBAR_WORKSPACE_RADIUS": str(appearance["waybar"]["workspace_radius"]),
+        "WAYBAR_TOOLTIP_RADIUS": str(appearance["waybar"]["tooltip_radius"]),
+        "WAYBAR_SHADOW_Y": str(appearance["waybar"]["shadow_y"]),
+        "WAYBAR_SHADOW_BLUR": str(appearance["waybar"]["shadow_blur"]),
+        "ROFI_WINDOW_RADIUS": str(appearance["rofi"]["window_radius"]),
+        "ROFI_CONTROL_RADIUS": str(appearance["rofi"]["control_radius"]),
+        "GHOSTTY_BACKGROUND_OPACITY": (
+            f"{appearance['ghostty']['background_opacity']:.3f}"
+            .rstrip("0")
+            .rstrip(".")
+        ),
+        "HYPRLAND_BACKGROUND": palette["background"][1:],
+        "HYPRLAND_ACTIVE_BORDER": hypr_rgba(
+            palette["accent"], appearance["hyprland"]["active_border_opacity"]
+        ),
+        "HYPRLAND_INACTIVE_BORDER": hypr_rgba(
+            palette["border"], appearance["hyprland"]["inactive_border_opacity"]
+        ),
+        "HYPRLAND_ROUNDING": str(appearance["hyprland"]["rounding"]),
+        "HYPRLAND_OVERLAY_ROUNDING": str(
+            appearance["hyprland"]["overlay_rounding"]
+        ),
+        "HYPRLAND_BORDER_SIZE": str(appearance["hyprland"]["border_size"]),
+        "HYPRLOCK_BACKGROUND": palette["background"][1:],
+        "HYPRLOCK_PANEL": hypr_rgba(
+            palette["background"], appearance["hyprlock"]["panel_opacity"]
+        ),
+        "HYPRLOCK_PANEL_BORDER": hypr_rgba(palette["border"], 1.0),
+        "HYPRLOCK_INPUT": hypr_rgba(
+            palette["rofi_surface"], appearance["hyprlock"]["input_opacity"]
+        ),
+        "HYPRLOCK_FOREGROUND": palette["foreground"][1:],
+        "HYPRLOCK_MUTED": palette["muted"][1:],
+        "HYPRLOCK_ACCENT": palette["accent"][1:],
+        "HYPRLOCK_RED": palette["red"][1:],
+        "HYPRLOCK_GREEN": palette["green"][1:],
+        "HYPRLOCK_GOLD": palette["gold"][1:],
+    }
+
+    for key, value in appearance["hyprlock"].items():
+        token_name = f"HYPRLOCK_{key.upper()}"
+        if isinstance(value, float):
+            values[token_name] = f"{value:.3f}".rstrip("0").rstrip(".")
+        else:
+            values[token_name] = str(value)
+
+    for index, value in enumerate(palette["terminal"]):
+        values[f"TERMINAL_{index}"] = value
+    for token_name in {
+        "BACKGROUND",
+        "FOREGROUND",
+        "MUTED",
+        "ACCENT",
+        "BORDER",
+        "SHADOW",
+        "GREEN",
+        "RED",
+        "GOLD",
+        "WAYBAR_SURFACE_COLOR",
+        "ROFI_SURFACE_COLOR",
+        "ROFI_SURFACE_HOVER_COLOR",
+        "ROFI_SELECTION_COLOR",
+    }:
+        values[f"{token_name}_HEX"] = values[token_name][1:]
+    for index, value in enumerate(palette["btop_gradient"], start=1):
+        values[f"BTP_GRADIENT_{index}"] = value
+    for index, value in enumerate(palette["cava_gradient"], start=1):
+        values[f"CAVA_GRADIENT_{index}"] = value
+    return values
+
+
+def render(template: str, values: dict[str, str], label: Path) -> str:
+    required = set(TOKEN.findall(template))
+    missing = sorted(required - set(values))
+    if missing:
+        raise ProfileError(f"{label}: missing template values: {', '.join(missing)}")
+
+    result = TOKEN.sub(lambda match: values[match.group(1)], template)
+    leftovers = sorted(set(TOKEN.findall(result)))
+    if leftovers:
+        raise ProfileError(f"{label}: unresolved tokens: {', '.join(leftovers)}")
+    return result
+
+
+def generated_outputs(config_root: Path, profile_dir: Path) -> dict[Path, str]:
+    profile = load_profile(profile_dir / "profile.json")
+    values = template_values(profile)
+    outputs = {}
+    for output_name, template_name in OUTPUT_TEMPLATES.items():
+        template_path = config_root / "templates" / template_name
+        try:
+            template = template_path.read_text(encoding="utf-8")
+        except FileNotFoundError as error:
+            raise ProfileError(f"missing template: {template_path}") from error
+        outputs[profile_dir / output_name] = render(template, values, template_path)
+    return outputs
+
+
+def profile_directories(config_root: Path, requested: list[str]) -> list[Path]:
+    themes_root = config_root / "themes"
+    if requested:
+        directories = [themes_root / item for item in requested]
+    else:
+        directories = sorted(
+            path.parent for path in themes_root.glob("*/profile.json") if path.is_file()
+        )
+    if not directories:
+        raise ProfileError(f"no theme profiles found below {themes_root}")
+    return directories
+
+
+def check_output(path: Path, expected: str) -> bool:
+    try:
+        actual = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        print(f"MISSING: {path}")
+        return False
+    if actual == expected:
+        return True
+
+    print(f"STALE: {path}")
+    diff = difflib.unified_diff(
+        actual.splitlines(keepends=True),
+        expected.splitlines(keepends=True),
+        fromfile=str(path),
+        tofile=f"generated:{path}",
+    )
+    print("".join(diff), end="")
+    return False
+
+
+def write_output(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary_path, 0o644)
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--config-root",
+        type=Path,
+        default=Path.home() / ".config" / "zenwolf",
+        help="Zenwolf configuration root (default: ~/.config/zenwolf)",
+    )
+    parser.add_argument("command", choices=("build", "check", "list", "metadata"))
+    parser.add_argument("profiles", nargs="*", help="profile directory names; default: all")
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    config_root = args.config_root.expanduser().resolve()
+
+    try:
+        directories = profile_directories(config_root, args.profiles)
+        if args.command == "list":
+            if args.profiles:
+                raise ProfileError("list does not accept profile names")
+            ordered = sorted(
+                (
+                    load_profile(profile_dir / "profile.json")["cycle_order"],
+                    profile_dir.name,
+                )
+                for profile_dir in directories
+            )
+            for _, name in ordered:
+                print(name)
+            return 0
+        if args.command == "metadata":
+            if len(directories) != 1 or len(args.profiles) != 1:
+                raise ProfileError("metadata requires exactly one profile name")
+            profile = load_profile(directories[0] / "profile.json")
+            wallpaper = Path(profile["wallpaper"]["path"]).expanduser()
+            checksum = profile["wallpaper"]["sha256"] or "-"
+            print(f"{wallpaper}\t{checksum}\t{profile['mode']}")
+            return 0
+        all_outputs = {
+            profile_dir: generated_outputs(config_root, profile_dir)
+            for profile_dir in directories
+        }
+    except ProfileError as error:
+        print(f"ERROR: {error}", file=os.sys.stderr)
+        return 1
+
+    if args.command == "check":
+        valid = True
+        for profile_dir, outputs in all_outputs.items():
+            profile_valid = all(check_output(path, content) for path, content in outputs.items())
+            if profile_valid:
+                print(f"OK: {profile_dir.name}")
+            valid = profile_valid and valid
+        return 0 if valid else 1
+
+    for profile_dir, outputs in all_outputs.items():
+        for path, content in outputs.items():
+            write_output(path, content)
+        print(f"BUILT: {profile_dir.name}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

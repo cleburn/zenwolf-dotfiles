@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "name": "Bushido",
+  "mode": "dark",
+  "cycle_order": 40,
+  "wallpaper": {
+    "path": "~/.local/share/zenwolf/wallpapers/bushido.png",
+    "sha256": "3c434772c673be34386cab620b88785ea16f384a542ae1f0da7531de984039eb"
+  },
+  "palette": {
+    "background": "#160e16",
+    "foreground": "#f7ead7",
+    "muted": "#b8a085",
+    "accent": "#d56936",
+    "border": "#6d4638",
+    "shadow": "#050204",
+    "selection_text": "#1b0d0b",
+    "urgent_text": "#fff8ed",
+    "waybar_surface": "#25161e",
+    "waybar_surface_hover": "#3a2025",
+    "rofi_surface": "#20121a",
+    "rofi_surface_hover": "#352026",
+    "rofi_selection": "#e79a55",
+    "ghostty_cursor": "#e79a55",
+    "ghostty_selection_background": "#633524",
+    "ghostty_selection_foreground": "#fff8ed",
+    "red": "#ae3f32",
+    "green": "#687e50",
+    "gold": "#c49a3f",
+    "terminal": [
+      "#160e16",
+      "#ae3f32",
+      "#687e50",
+      "#c49a3f",
+      "#586c85",
+      "#a65772",
+      "#61898a",
+      "#e6d6c0",
+      "#79645e",
+      "#db6045",
+      "#8da46b",
+      "#e2ba61",
+      "#7d93aa",
+      "#ce7893",
+      "#84b0ad",
+      "#fff8ed"
+    ],
+    "btop_highlight": "#e79a55",
+    "btop_selected_background": "#633524",
+    "btop_selected_foreground": "#fff8ed",
+    "btop_meter": "#352026",
+    "btop_divider": "#6d4638",
+    "btop_gradient": ["#c49a3f", "#d56936", "#ce7893"],
+    "cava_gradient": ["#8da46b", "#e2ba61", "#db6045", "#ce7893"]
+  },
+  "opacity": {
+    "waybar": {
+      "background": 0.90,
+      "surface": 0.83,
+      "surface_hover": 0.93,
+      "shadow": 0.34
+    },
+    "rofi": {
+      "background": 0.96,
+      "surface": 0.95,
+      "surface_hover": 0.96,
+      "selection": 0.94
+    }
+  },
+  "appearance": {
+    "waybar": {
+      "panel_radius": 3,
+      "module_radius": 2,
+      "workspace_radius": 2,
+      "tooltip_radius": 3,
+      "shadow_y": 1,
+      "shadow_blur": 4
+    },
+    "rofi": {
+      "window_radius": 4,
+      "control_radius": 2
+    },
+    "ghostty": {
+      "background_opacity": 0.96
+    },
+    "hyprland": {
+      "rounding": 2,
+      "overlay_rounding": 3,
+      "border_size": 1,
+      "active_border_opacity": 0.90,
+      "inactive_border_opacity": 0.60
+    },
+    "hyprlock": {
+      "panel_width": 460,
+      "panel_height": 300,
+      "panel_x": -480,
+      "panel_y": 0,
+      "panel_radius": 4,
+      "panel_opacity": 0.90,
+      "input_width": 340,
+      "input_height": 54,
+      "input_x": -480,
+      "input_y": -60,
+      "input_radius": 2,
+      "input_opacity": 0.96,
+      "time_x": -480,
+      "time_y": 82,
+      "time_size": 64,
+      "identity_x": -480,
+      "identity_y": 28,
+      "identity_size": 16,
+      "background_brightness": 0.70
+    }
+  }
+}

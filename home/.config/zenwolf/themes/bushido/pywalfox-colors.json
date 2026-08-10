@@ -1,0 +1,27 @@
+{
+  "wallpaper": "~/.local/share/zenwolf/wallpapers/bushido.png",
+  "alpha": "100",
+  "special": {
+    "background": "#160e16",
+    "foreground": "#f7ead7",
+    "cursor": "#e79a55"
+  },
+  "colors": {
+    "color0": "#160e16",
+    "color1": "#ae3f32",
+    "color2": "#687e50",
+    "color3": "#c49a3f",
+    "color4": "#586c85",
+    "color5": "#a65772",
+    "color6": "#61898a",
+    "color7": "#160e16",
+    "color8": "#79645e",
+    "color9": "#db6045",
+    "color10": "#8da46b",
+    "color11": "#e2ba61",
+    "color12": "#7d93aa",
+    "color13": "#ce7893",
+    "color14": "#84b0ad",
+    "color15": "#fff8ed"
+  }
+}

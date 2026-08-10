@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly hardware_config="${ZENWOLF_HARDWARE_CONFIG:-/etc/zenwolf/hardware.conf}"
+if [[ -r "$hardware_config" ]]; then
+    # shellcheck source=/dev/null
+    source "$hardware_config"
+fi
+
+readonly gaming_service='zenwolf-nvidia-gaming.service'
+readonly radeon_vulkan_icd="${ZENWOLF_RADEON_VULKAN_ICD:-/usr/share/vulkan/icd.d/radeon_icd.json}"
+readonly nvidia_vulkan_icd="${ZENWOLF_NVIDIA_VULKAN_ICD:-/usr/share/vulkan/icd.d/nvidia_icd.json}"
+readonly mesa_egl="${ZENWOLF_MESA_EGL:-/usr/share/glvnd/egl_vendor.d/50_mesa.json}"
+
+unset VK_ICD_FILENAMES
+
+if /usr/bin/systemctl is-active --quiet "$gaming_service"; then
+    if [[ ! -d /sys/module/nvidia_drm ]]; then
+        printf 'ERROR: NVIDIA gaming mode is active but nvidia_drm is not loaded.\n' >&2
+        exit 1
+    fi
+    if [[ ! -r "$nvidia_vulkan_icd" ]]; then
+        printf 'ERROR: NVIDIA Vulkan manifest is not readable: %s\n' \
+            "$nvidia_vulkan_icd" >&2
+        exit 1
+    fi
+
+    # In the deliberate gaming desktop, keep Steam, shader workers, Proton,
+    # and games on one NVIDIA boundary.
+    export VK_DRIVER_FILES="$nvidia_vulkan_icd"
+    unset __EGL_VENDOR_LIBRARY_FILENAMES
+    export __GLX_VENDOR_LIBRARY_NAME='nvidia'
+    export __NV_PRIME_RENDER_OFFLOAD='1'
+    export __VK_LAYER_NV_optimus='NVIDIA_only'
+else
+    if [[ ! -r "$radeon_vulkan_icd" ]]; then
+        printf 'ERROR: Radeon Vulkan manifest is not readable: %s\n' \
+            "$radeon_vulkan_icd" >&2
+        exit 1
+    fi
+    if [[ ! -r "$mesa_egl" ]]; then
+        printf 'ERROR: Mesa EGL vendor manifest is not readable: %s\n' \
+            "$mesa_egl" >&2
+        exit 1
+    fi
+
+    # In the ordinary desktop, keep the complete Steam tree on AMD so NVIDIA
+    # can remain runtime-suspended.
+    export VK_DRIVER_FILES="$radeon_vulkan_icd"
+    export __EGL_VENDOR_LIBRARY_FILENAMES="$mesa_egl"
+    export __GLX_VENDOR_LIBRARY_NAME='mesa'
+    unset __NV_PRIME_RENDER_OFFLOAD
+    unset __VK_LAYER_NV_optimus
+fi
+
+exec /usr/bin/steam "$@"

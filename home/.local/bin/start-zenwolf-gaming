@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly gaming_service='zenwolf-nvidia-gaming.service'
+readonly desktop_launcher="$HOME/.local/bin/start-zenwolf-desktop"
+readonly systemctl='/usr/bin/systemctl'
+readonly runtime_root="${XDG_RUNTIME_DIR:-/run/user/$UID}"
+readonly transition_request="$runtime_root/zenwolf-session.request"
+
+if [[ ! -x "$desktop_launcher" ]]; then
+    printf 'ERROR: desktop launcher is not executable: %s\n' "$desktop_launcher" >&2
+    exit 1
+fi
+
+if pgrep -x Hyprland >/dev/null; then
+    printf 'ERROR: gaming mode must be started from a TTY before Hyprland.\n' >&2
+    printf 'Exit the current desktop, then run gamer.\n' >&2
+    exit 1
+fi
+
+ac_online='0'
+for supply in /sys/class/power_supply/*; do
+    [[ -r "$supply/type" && -r "$supply/online" ]] || continue
+    [[ "$(<"$supply/type")" == 'Mains' ]] || continue
+    if [[ "$(<"$supply/online")" == '1' ]]; then
+        ac_online='1'
+        break
+    fi
+done
+
+if [[ "$ac_online" != '1' ]]; then
+    printf 'WARNING: AC power was not detected; maximum gaming performance is not available.\n' >&2
+    read -r -p 'Continue on battery? [y/N] ' response
+    [[ "$response" == [yY] || "$response" == [yY][eE][sS] ]] || exit 1
+fi
+
+gaming_started='0'
+
+stop_gaming_mode() {
+    if [[ "$gaming_started" == '1' ]]; then
+        printf 'Stopping Zenwolf gaming mode...\n'
+        if ! sudo -n -- "$systemctl" stop "$gaming_service"; then
+            printf 'ERROR: gaming mode did not stop cleanly.\n' >&2
+            printf 'Inspect with: sudo systemctl status %s\n' "$gaming_service" >&2
+            return 1
+        fi
+        gaming_started='0'
+    fi
+}
+
+cleanup() {
+    status=$?
+    trap - EXIT
+
+    stop_gaming_mode || status=1
+    exit "$status"
+}
+
+trap cleanup EXIT
+
+printf 'Starting Zenwolf gaming mode...\n'
+if ! sudo -n -- "$systemctl" start "$gaming_service"; then
+    printf 'ERROR: the narrow passwordless gaming-service authorization is unavailable.\n' >&2
+    printf 'Inspect with: sudo -l /usr/bin/systemctl start %s\n' "$gaming_service" >&2
+    exit 1
+fi
+gaming_started='1'
+if ! "$systemctl" is-active --quiet "$gaming_service"; then
+    printf 'ERROR: gaming service did not become active.\n' >&2
+    exit 1
+fi
+
+printf 'Gaming mode active; starting the AMD-owned desktop.\n'
+printf 'Exit Hyprland to end gaming mode and restore the ordinary GPU policy.\n'
+
+desktop_status='0'
+ZENWOLF_SESSION_MODE='game' "$desktop_launcher" "$@" || desktop_status=$?
+
+if [[ "$desktop_status" == '0' && -r "$transition_request" ]]; then
+    IFS= read -r requested_session <"$transition_request" || true
+    rm -f "$transition_request"
+
+    if [[ "$requested_session" == 'zen' ]]; then
+        if ! stop_gaming_mode; then
+            exit 1
+        fi
+        trap - EXIT
+        printf 'Switching from Game to Zen...\n'
+        exec "$desktop_launcher"
+    fi
+
+    printf 'WARNING: ignored invalid Zenwolf session request: %s\n' \
+        "$requested_session" >&2
+fi
+
+exit "$desktop_status"

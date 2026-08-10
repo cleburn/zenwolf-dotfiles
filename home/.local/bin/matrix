@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly config="${XDG_CONFIG_HOME:-$HOME/.config}/zenwolf/unimatrix.conf"
+readonly program="$HOME/.local/share/zenwolf/vendor/unimatrix/unimatrix.py"
+
+if [[ ! -r "$config" ]]; then
+    printf 'ERROR: UniMatrix preset not found: %s\n' "$config" >&2
+    exit 1
+fi
+
+if [[ ! -r "$program" ]]; then
+    printf 'ERROR: UniMatrix program not found: %s\n' "$program" >&2
+    exit 1
+fi
+
+# The preset is deliberately a small, user-editable Bash data file.
+# shellcheck source=/dev/null
+source "$config"
+
+args=(
+    -s "${speed:-75}"
+    -c "${color:-cyan}"
+    -l "${character_sets:-cCnu}"
+    -u "${custom_characters:-}"
+)
+
+[[ "${asynchronous:-true}" == true ]] && args+=(-a)
+[[ "${bold:-false}" == false ]] && args+=(-n)
+[[ "${show_status:-false}" == false ]] && args+=(-o)
+
+# Explicit command-line options follow the preset, so `matrix -s 90` is a
+# convenient one-run override without editing the durable configuration.
+exec /usr/bin/python "$program" "${args[@]}" "$@"

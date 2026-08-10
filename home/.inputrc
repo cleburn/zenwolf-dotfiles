@@ -1,0 +1,5 @@
+# After typing a command prefix, Up and Down cycle only through matching Bash
+# history entries. This keeps command recall predictable without installing a
+# replacement line editor or adding inline suggestions.
+"\e[A": history-search-backward
+"\e[B": history-search-forward

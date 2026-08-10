@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Cava Audio Visualizer
+GenericName=Audio Visualizer
+Comment=Show Zenwolf's theme-aware PipeWire visualizer
+Icon=audio-x-generic
+Exec=zenwolf-cava show
+Terminal=false
+NoDisplay=true
+Categories=AudioVideo;Audio;
+StartupNotify=false

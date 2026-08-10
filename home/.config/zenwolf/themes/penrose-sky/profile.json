@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "name": "Penrose Sky",
+  "mode": "dark",
+  "cycle_order": 10,
+  "wallpaper": {
+    "path": "~/.local/share/zenwolf/wallpapers/penrose-triangle-sky.png",
+    "sha256": "0e333e69370a760ed4eeca13246fe196202d9a1aedcb79e50c43dcd7934aa48f"
+  },
+  "palette": {
+    "background": "#0a060f",
+    "foreground": "#afdbc9",
+    "muted": "#4e6568",
+    "accent": "#51a192",
+    "border": "#51a192",
+    "shadow": "#000000",
+    "selection_text": "#0a060f",
+    "urgent_text": "#f9fafb",
+    "waybar_surface": "#4d7985",
+    "waybar_surface_hover": "#33908f",
+    "rofi_surface": "#111827",
+    "rofi_surface_hover": "#243247",
+    "rofi_selection": "#33908f",
+    "ghostty_cursor": "#51a192",
+    "ghostty_selection_background": "#4d7985",
+    "ghostty_selection_foreground": "#f8fafc",
+    "red": "#ef4444",
+    "green": "#22c55e",
+    "gold": "#f59e0b",
+    "terminal": [
+      "#15111a",
+      "#ef4444",
+      "#22c55e",
+      "#f59e0b",
+      "#4d7985",
+      "#9b72cf",
+      "#51a192",
+      "#afdbc9",
+      "#4e6568",
+      "#f87171",
+      "#4ade80",
+      "#facc15",
+      "#75aeb8",
+      "#c4a7e7",
+      "#9adfd0",
+      "#f9fafb"
+    ],
+    "btop_highlight": "#9adfd0",
+    "btop_selected_background": "#4d7985",
+    "btop_selected_foreground": "#f8fafc",
+    "btop_meter": "#15111a",
+    "btop_divider": "#4d7985",
+    "btop_gradient": ["#4d7985", "#33908f", "#9adfd0"],
+    "cava_gradient": ["#4d7985", "#33908f", "#51a192", "#9adfd0"]
+  },
+  "opacity": {
+    "waybar": {
+      "background": 0.78,
+      "surface": 0.48,
+      "surface_hover": 0.72,
+      "shadow": 0.35
+    },
+    "rofi": {
+      "background": 0.91,
+      "surface": 0.878,
+      "surface_hover": 0.933,
+      "selection": 0.91
+    }
+  },
+  "appearance": {
+    "waybar": {
+      "panel_radius": 11,
+      "module_radius": 7,
+      "workspace_radius": 7,
+      "tooltip_radius": 9,
+      "shadow_y": 2,
+      "shadow_blur": 8
+    },
+    "rofi": {
+      "window_radius": 12,
+      "control_radius": 8
+    },
+    "ghostty": {
+      "background_opacity": 1.0
+    },
+    "hyprland": {
+      "rounding": 0,
+      "overlay_rounding": 12,
+      "border_size": 1,
+      "active_border_opacity": 1.0,
+      "inactive_border_opacity": 0.55
+    },
+    "hyprlock": {
+      "panel_width": 460,
+      "panel_height": 300,
+      "panel_x": 0,
+      "panel_y": 0,
+      "panel_radius": 14,
+      "panel_opacity": 0.92,
+      "input_width": 340,
+      "input_height": 54,
+      "input_x": 0,
+      "input_y": -60,
+      "input_radius": 14,
+      "input_opacity": 0.92,
+      "time_x": 0,
+      "time_y": 82,
+      "time_size": 64,
+      "identity_x": 0,
+      "identity_y": 28,
+      "identity_size": 16,
+      "background_brightness": 0.72
+    }
+  }
+}

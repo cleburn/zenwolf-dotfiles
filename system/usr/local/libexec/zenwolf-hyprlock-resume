@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly hardware_config="${ZENWOLF_HARDWARE_CONFIG:-/etc/zenwolf/hardware.conf}"
+readonly service='zenwolf-hyprlock.service'
+
+[[ -r "$hardware_config" ]] || exit 0
+[[ "$(stat -c %u "$hardware_config")" == '0' ]] || exit 0
+config_mode="$((8#$(stat -c %a "$hardware_config")))"
+(( (config_mode & 022) == 0 )) || exit 0
+
+# This file is trusted only after the root ownership and mode checks above.
+# shellcheck source=/dev/null
+source "$hardware_config"
+
+session_user="${ZENWOLF_SESSION_USER:-}"
+[[ "$session_user" =~ ^[a-z_][a-z0-9_-]*$ ]] || exit 0
+[[ "$session_user" != 'CHANGE_ME_USER' ]] || exit 0
+readonly session_user
+
+session_uid="$(id -u "$session_user" 2>/dev/null)" || exit 0
+readonly session_uid
+readonly runtime_dir="/run/user/$session_uid"
+readonly user_bus="$runtime_dir/bus"
+
+# An absent user bus means there is no live desktop to repair. try-restart is
+# equally narrow: it does nothing unless Hyprlock was active before suspend.
+[[ -S "$user_bus" ]] || exit 0
+
+runuser -u "$session_user" -- env \
+    XDG_RUNTIME_DIR="$runtime_dir" \
+    DBUS_SESSION_BUS_ADDRESS="unix:path=$user_bus" \
+    systemctl --user try-restart "$service"

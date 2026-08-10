@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly satty_launcher="$HOME/.local/bin/satty"
+
+pictures_dir="$(/usr/bin/xdg-user-dir PICTURES)"
+if [[ -z "$pictures_dir" || "$pictures_dir" != /* || "$pictures_dir" == "$HOME" ]]; then
+    printf 'ERROR: XDG pictures directory is invalid: %s\n' "$pictures_dir" >&2
+    exit 1
+fi
+readonly pictures_dir
+readonly screenshot_dir="$pictures_dir/screenshots"
+
+usage() {
+    printf 'Usage: %s [full|region|annotate]\n' "${0##*/}" >&2
+}
+
+notify_saved() {
+    /usr/bin/notify-send \
+        --app-name='Zenwolf Capture' \
+        --expire-time=5000 \
+        'Screenshot saved' \
+        "$1" 2>/dev/null || true
+}
+
+install -d -m 755 "$screenshot_dir"
+readonly output="$screenshot_dir/zenwolf-$(date '+%Y%m%d-%H%M%S').png"
+readonly mode="${1:-annotate}"
+
+case "$mode" in
+    full)
+        # Rofi exits before Hyprland finishes its closing fade. Wait beyond
+        # that animation so neither the live menu nor a translucent exit frame
+        # appears in a full-screen capture. The delay remains short enough for
+        # the direct Print-key action to feel immediate.
+        sleep 0.5
+        /usr/bin/grim "$output"
+        notify_saved "$output"
+        ;;
+    region)
+        # Cancelling Slurp is a normal user choice, not a launcher failure.
+        if ! geometry="$(/usr/bin/slurp)"; then
+            exit 0
+        fi
+        /usr/bin/grim -g "$geometry" "$output"
+        notify_saved "$output"
+        ;;
+    annotate)
+        if [[ ! -x "$satty_launcher" ]]; then
+            printf 'ERROR: guarded Satty launcher is not executable: %s\n' \
+                "$satty_launcher" >&2
+            exit 1
+        fi
+
+        if ! geometry="$(/usr/bin/slurp)"; then
+            exit 0
+        fi
+
+        # PPM avoids compressing an intermediate image that Satty will
+        # immediately decode. Satty performs the final PNG save on Ctrl+S.
+        /usr/bin/grim -g "$geometry" -t ppm - \
+            | "$satty_launcher" \
+                --filename - \
+                --output-filename "$output" \
+                --copy-command /usr/bin/wl-copy \
+                --disable-notifications
+
+        [[ -e "$output" ]] && notify_saved "$output"
+        ;;
+    *)
+        usage
+        exit 2
+        ;;
+esac

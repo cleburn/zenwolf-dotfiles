@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=btop++
+GenericName=System Monitor
+Comment=Open btop in Zenwolf's large floating monitor terminal
+Icon=btop
+Exec=zenwolf-btop show
+Terminal=false
+Categories=System;Monitor;
+Keywords=system;process;task;monitor;

@@ -1,0 +1,27 @@
+{
+  "wallpaper": "~/.local/share/zenwolf/wallpapers/penrose-triangle-forest.png",
+  "alpha": "100",
+  "special": {
+    "background": "#0c0c10",
+    "foreground": "#cdd0cb",
+    "cursor": "#a1a99e"
+  },
+  "colors": {
+    "color0": "#161719",
+    "color1": "#ef4444",
+    "color2": "#22c55e",
+    "color3": "#f59e0b",
+    "color4": "#5e706c",
+    "color5": "#927aa8",
+    "color6": "#7a8b83",
+    "color7": "#0c0c10",
+    "color8": "#606762",
+    "color9": "#f87171",
+    "color10": "#4ade80",
+    "color11": "#facc15",
+    "color12": "#99a39a",
+    "color13": "#c4a7e7",
+    "color14": "#dce3dc",
+    "color15": "#f9fafb"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "wallpaper": "~/.local/share/zenwolf/wallpapers/avatar-aang-dark.png",
+  "alpha": "100",
+  "special": {
+    "background": "#0b0712",
+    "foreground": "#eee8f7",
+    "cursor": "#c49cff"
+  },
+  "colors": {
+    "color0": "#0b0712",
+    "color1": "#b54865",
+    "color2": "#5d9a7a",
+    "color3": "#c49a4b",
+    "color4": "#7155a2",
+    "color5": "#a85d9f",
+    "color6": "#668fb5",
+    "color7": "#0b0712",
+    "color8": "#695b75",
+    "color9": "#dc718c",
+    "color10": "#82c29b",
+    "color11": "#e5bc6b",
+    "color12": "#9a7bd2",
+    "color13": "#d183c7",
+    "color14": "#8eb9db",
+    "color15": "#fff8ff"
+  }
+}

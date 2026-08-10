@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly unit='zenwolf-screen-recorder.service'
+readonly runtime_root="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+readonly state_dir="$runtime_root/zenwolf-screen-recorder"
+readonly state_file="$state_dir/output"
+
+usage() {
+    printf 'Usage: %s [full|region]\n' "${0##*/}" >&2
+}
+
+notify() {
+    /usr/bin/notify-send \
+        --app-name='Zenwolf Capture' \
+        --expire-time=5000 \
+        "$@" 2>/dev/null || true
+}
+
+readonly mode="${1:-region}"
+case "$mode" in
+    full|region)
+        ;;
+    *)
+        usage
+        exit 2
+        ;;
+esac
+
+if /usr/bin/systemctl --user is-active --quiet "$unit"; then
+    output='the current recording'
+    [[ -r "$state_file" ]] && IFS= read -r output < "$state_file"
+
+    # The transient unit's KillSignal is SIGINT, which lets wf-recorder write
+    # the Matroska trailer before systemd considers the recording stopped.
+    /usr/bin/systemctl --user stop "$unit"
+    rm -f "$state_file"
+    notify 'Screen recording saved' "$output"
+    exit 0
+fi
+
+# A failed transient unit can retain its name until reset, depending on when
+# systemd finishes collecting it. Clear that state before starting a new run.
+if /usr/bin/systemctl --user is-failed --quiet "$unit"; then
+    /usr/bin/systemctl --user reset-failed "$unit"
+fi
+
+declare -a capture_scope=()
+if [[ "$mode" == 'region' ]]; then
+    # Cancelling Slurp is a normal user choice, not a launcher failure.
+    if ! geometry="$(/usr/bin/slurp)"; then
+        exit 0
+    fi
+    capture_scope=(--geometry "$geometry")
+fi
+readonly -a capture_scope
+
+videos_dir="$(/usr/bin/xdg-user-dir VIDEOS)"
+if [[ -z "$videos_dir" || "$videos_dir" != /* || "$videos_dir" == "$HOME" ]]; then
+    printf 'ERROR: XDG videos directory is invalid: %s\n' "$videos_dir" >&2
+    exit 1
+fi
+readonly videos_dir
+readonly recording_dir="$videos_dir/recordings"
+
+install -d -m 755 "$recording_dir" "$state_dir"
+readonly output="$recording_dir/zenwolf-$(date '+%Y%m%d-%H%M%S').mkv"
+printf '%s\n' "$output" > "$state_file"
+
+# Do not pass --device here. wf-recorder 0.6.0 compares device path strings
+# literally; allowing it to adopt Hyprland's compositor-reported AMD render
+# path preserves the validated zero-copy DMA-BUF path.
+if ! /usr/bin/systemd-run \
+    --user \
+    --quiet \
+    --collect \
+    --unit="$unit" \
+    --property=Type=exec \
+    --property=KillSignal=SIGINT \
+    --property=TimeoutStopSec=10s \
+    --setenv="WAYLAND_DISPLAY=${WAYLAND_DISPLAY:?}" \
+    --setenv="XDG_RUNTIME_DIR=$runtime_root" \
+    /usr/bin/wf-recorder \
+        "${capture_scope[@]}" \
+        --file "$output" \
+        --codec h264_vaapi \
+        --overwrite; then
+    rm -f "$state_file"
+    notify 'Screen recording failed' 'The recorder service could not start.'
+    exit 1
+fi
+
+# Type=exec proves wf-recorder was executed, but a codec error could still make
+# it exit immediately. Catch that case instead of claiming recording began.
+sleep 0.4
+if ! /usr/bin/systemctl --user is-active --quiet "$unit"; then
+    rm -f "$state_file"
+    notify 'Screen recording failed' \
+        'Inspect: journalctl --user -u zenwolf-screen-recorder.service'
+    exit 1
+fi
+
+notify 'Screen recording started' \
+    'Open the Super+Print capture menu again to stop and save.'

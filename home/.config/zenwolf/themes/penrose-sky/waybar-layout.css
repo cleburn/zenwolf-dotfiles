@@ -1,0 +1,24 @@
+.modules-left,
+.modules-center,
+.modules-right {
+  border-radius: 11px;
+  box-shadow: 0 2px 8px @shadow;
+}
+
+#workspaces button {
+  border-radius: 7px;
+}
+
+#custom-zenwolf-theme,
+#bluetooth,
+#network,
+#pulseaudio,
+#backlight,
+#battery,
+#tray {
+  border-radius: 7px;
+}
+
+tooltip {
+  border-radius: 9px;
+}

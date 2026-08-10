@@ -1,0 +1,12 @@
+@define-color background rgba(16, 24, 32, 0.9);
+@define-color surface rgba(24, 42, 50, 0.82);
+@define-color surface_hover rgba(39, 67, 76, 0.92);
+@define-color foreground #e8f3f5;
+@define-color muted #8fa6ad;
+@define-color accent #4fd5df;
+@define-color border #426b75;
+@define-color shadow rgba(4, 8, 11, 0.3);
+@define-color selection_text #0d171c;
+@define-color red #bd4b2b;
+@define-color green #5e9b72;
+@define-color gold #d99b32;

@@ -1,0 +1,27 @@
+{
+  "wallpaper": "~/.local/share/zenwolf/wallpapers/aang-chakra-wide.png",
+  "alpha": "100",
+  "special": {
+    "background": "#090817",
+    "foreground": "#f4efff",
+    "cursor": "#56d5e5"
+  },
+  "colors": {
+    "color0": "#090817",
+    "color1": "#b93346",
+    "color2": "#3e9b50",
+    "color3": "#c99716",
+    "color4": "#307fc4",
+    "color5": "#b14ac7",
+    "color6": "#28c9df",
+    "color7": "#090817",
+    "color8": "#675c7a",
+    "color9": "#ee5267",
+    "color10": "#63c76e",
+    "color11": "#f1bd34",
+    "color12": "#5ca6e5",
+    "color13": "#e072ed",
+    "color14": "#70e6f2",
+    "color15": "#fff9ff"
+  }
+}

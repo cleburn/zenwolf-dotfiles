@@ -1,0 +1,11 @@
+# Keep XDG-aware applications on Zenwolf's lowercase home-directory layout.
+# xdg-user-dirs-update preserves explicit local paths on later runs.
+XDG_DESKTOP_DIR="$HOME/desktop"
+XDG_DOWNLOAD_DIR="$HOME/downloads"
+XDG_TEMPLATES_DIR="$HOME/templates"
+XDG_PUBLICSHARE_DIR="$HOME/public"
+XDG_DOCUMENTS_DIR="$HOME/documents"
+XDG_MUSIC_DIR="$HOME/music"
+XDG_PICTURES_DIR="$HOME/pictures"
+XDG_VIDEOS_DIR="$HOME/videos"
+XDG_PROJECTS_DIR="$HOME/projects"

@@ -1,0 +1,17 @@
+configuration {
+    modes: "drun";
+    show-icons: true;
+    display-drun: "";
+    drun-display-format: "{name}";
+    font: "JetBrainsMono Nerd Font Mono 15";
+    terminal: "ghostty";
+    matching: "fuzzy";
+    sort: true;
+    sorting-method: "normal";
+    case-smart: true;
+    cycle: true;
+    hover-select: false;
+    click-to-exit: true;
+}
+
+@theme "zenwolf"

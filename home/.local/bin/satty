@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# GTK's Vulkan renderer otherwise enumerates every installed Vulkan ICD. On
+# Zenwolf that makes an ordinary screenshot annotation load nvidia_modeset and
+# wake the compute-only RTX. Restrict Satty alone to Mesa's Radeon ICD.
+readonly hardware_config="${ZENWOLF_HARDWARE_CONFIG:-/etc/zenwolf/hardware.conf}"
+if [[ -r "$hardware_config" ]]; then
+    # shellcheck source=/dev/null
+    source "$hardware_config"
+fi
+
+readonly radeon_vulkan_icd="${ZENWOLF_RADEON_VULKAN_ICD:-/usr/share/vulkan/icd.d/radeon_icd.json}"
+
+if [[ ! -r "$radeon_vulkan_icd" ]]; then
+    printf 'ERROR: Radeon Vulkan manifest is not readable: %s\n' \
+        "$radeon_vulkan_icd" >&2
+    exit 1
+fi
+
+export VK_DRIVER_FILES="$radeon_vulkan_icd"
+
+exec /usr/bin/satty "$@"

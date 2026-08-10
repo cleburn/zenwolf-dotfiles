@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Screen Recorder (Start/Stop)
+GenericName=Screen Recorder
+Comment=Select a region to record, or stop and save the active recording
+Icon=media-record
+Exec=zenwolf-record
+Terminal=false
+NoDisplay=true
+Categories=AudioVideo;Recorder;
+Keywords=record;screen;capture;video;wf-recorder;
+StartupNotify=false

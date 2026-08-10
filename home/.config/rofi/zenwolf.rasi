@@ -1,0 +1,93 @@
+@import "~/.config/zenwolf/current/rofi.rasi"
+
+window {
+    width: 520px;
+    padding: 1px;
+    background-color: @background;
+    border: 1px;
+    border-color: @panel-border;
+    border-radius: @window-radius;
+}
+
+mainbox {
+    padding: 16px 18px 18px;
+    spacing: 10px;
+    background-color: transparent;
+    children: [ inputbar, message, listview ];
+}
+
+inputbar {
+    padding: 9px 12px;
+    spacing: 11px;
+    background-color: @surface;
+    border: 1px;
+    border-color: @surface-hover;
+    border-radius: @control-radius;
+    children: [ prompt, entry ];
+}
+
+prompt {
+    background-color: transparent;
+    text-color: @accent;
+}
+
+entry {
+    background-color: transparent;
+    text-color: @foreground;
+    placeholder: "Search applications";
+    placeholder-color: @muted;
+}
+
+message {
+    padding: 0;
+    background-color: transparent;
+}
+
+textbox {
+    text-color: @muted;
+}
+
+listview {
+    lines: 7;
+    columns: 1;
+    spacing: 6px;
+    fixed-height: false;
+    scrollbar: false;
+    background-color: transparent;
+}
+
+element {
+    padding: 8px 11px;
+    spacing: 12px;
+    background-color: transparent;
+    text-color: @foreground;
+    border-radius: @control-radius;
+    orientation: horizontal;
+}
+
+element normal.normal,
+element alternate.normal {
+    background-color: transparent;
+    text-color: @foreground;
+}
+
+element selected.normal {
+    background-color: @selection;
+    text-color: @selection-text;
+}
+
+element selected.urgent {
+    background-color: @red;
+    text-color: @urgent-text;
+}
+
+element-icon {
+    size: 30px;
+    background-color: transparent;
+}
+
+element-text {
+    vertical-align: 0.5;
+    background-color: transparent;
+    text-color: inherit;
+}

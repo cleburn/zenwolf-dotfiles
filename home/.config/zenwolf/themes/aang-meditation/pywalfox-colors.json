@@ -1,0 +1,27 @@
+{
+  "wallpaper": "~/.local/share/zenwolf/wallpapers/aang-meditate.jpg",
+  "alpha": "100",
+  "special": {
+    "background": "#170e0a",
+    "foreground": "#f3dfc1",
+    "cursor": "#d89a3c"
+  },
+  "colors": {
+    "color0": "#170e0a",
+    "color1": "#a9323f",
+    "color2": "#637f6f",
+    "color3": "#bd7d25",
+    "color4": "#5c7481",
+    "color5": "#89616f",
+    "color6": "#6f928a",
+    "color7": "#170e0a",
+    "color8": "#746455",
+    "color9": "#d0525d",
+    "color10": "#86a993",
+    "color11": "#dfa24a",
+    "color12": "#8099a6",
+    "color13": "#b48091",
+    "color14": "#96b9ad",
+    "color15": "#fff4dc"
+  }
+}

@@ -1,0 +1,9 @@
+[Unit]
+Description=Zenwolf manual session lock
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/hyprlock
+Restart=no
+TimeoutStopSec=5

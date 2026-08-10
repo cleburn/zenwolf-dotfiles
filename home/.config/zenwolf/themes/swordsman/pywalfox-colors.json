@@ -1,0 +1,27 @@
+{
+  "wallpaper": "~/.local/share/zenwolf/wallpapers/swordsman.png",
+  "alpha": "100",
+  "special": {
+    "background": "#0b1021",
+    "foreground": "#f1e6cf",
+    "cursor": "#d4ad68"
+  },
+  "colors": {
+    "color0": "#0b1021",
+    "color1": "#a94c4c",
+    "color2": "#5f816a",
+    "color3": "#c79a54",
+    "color4": "#4f6f9e",
+    "color5": "#86638c",
+    "color6": "#5d8b9b",
+    "color7": "#0b1021",
+    "color8": "#5e6477",
+    "color9": "#d16e68",
+    "color10": "#82a88a",
+    "color11": "#e1bd7b",
+    "color12": "#7694c2",
+    "color13": "#ab82ae",
+    "color14": "#82b2bd",
+    "color15": "#fff9e8"
+  }
+}

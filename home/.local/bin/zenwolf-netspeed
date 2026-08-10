@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+
+"""Run Zenwolf's on-demand internet speed test."""
+
+import json
+import shutil
+import subprocess
+import sys
+import termios
+import tty
+
+SPEEDTEST_COMMAND = "cloudflare-speed-cli"
+SPEEDTEST_ARGUMENTS = (
+    "--json",
+    "--auto-save",
+    "false",
+)
+SPEEDTEST_TIMEOUT_SECONDS = 60
+FAST_DOWNLOAD_MBPS = 100.0
+FAST_UPLOAD_MBPS = 20.0
+FAST_PING_MS = 75.0
+
+MEH_DOWNLOAD_MBPS = 25.0
+MEH_UPLOAD_MBPS = 5.0
+MEH_PING_MS = 100.0
+
+GREEN = "\033[32m"
+GOLD = "\033[33m"
+RED = "\033[31m"
+RESET = "\033[0m"
+
+
+def run_speed_test(speedtest: str) -> dict:
+    """Run the benchmark engine and decode its JSON result."""
+    completed = subprocess.run(
+        [speedtest, *SPEEDTEST_ARGUMENTS],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=SPEEDTEST_TIMEOUT_SECONDS,
+    )
+    return json.loads(completed.stdout)
+
+
+def rate_connection(
+    download: float,
+    upload: float,
+    ping: float,
+) -> tuple[str, str]:
+    """Return the connection rating and its terminal color."""
+    if (
+        download >= FAST_DOWNLOAD_MBPS
+        and upload >= FAST_UPLOAD_MBPS
+        and ping <= FAST_PING_MS
+    ):
+        return "fast as fuk boi", GREEN
+
+    if (
+        download >= MEH_DOWNLOAD_MBPS
+        and upload >= MEH_UPLOAD_MBPS
+        and ping <= MEH_PING_MS
+    ):
+        return "meh", GOLD
+
+    return "shitty", RED
+
+
+def wait_for_quit() -> None:
+    """Wait for a single Q keystroke when running in a terminal."""
+    if not sys.stdin.isatty():
+        return
+
+    print()
+    print("[Q] Quit", end="", flush=True)
+
+    terminal = sys.stdin.fileno()
+    previous_settings = termios.tcgetattr(terminal)
+
+    try:
+        tty.setcbreak(terminal)
+
+        while sys.stdin.read(1).lower() != "q":
+            pass
+    finally:
+        termios.tcsetattr(
+            terminal,
+            termios.TCSADRAIN,
+            previous_settings,
+        )
+    print()
+
+
+def show_error(message: str) -> int:
+    """Display an error and keep an interactive window open."""
+    print()
+    print(f"{RED}ERROR:{RESET} {message}", file=sys.stderr)
+    wait_for_quit()
+    return 1
+
+
+def main() -> int:
+    """Run the speed test and print its primary measurements."""
+    speedtest = shutil.which(SPEEDTEST_COMMAND)
+
+    if speedtest is None:
+        return show_error(
+            f"{SPEEDTEST_COMMAND} is not installed or is not in PATH."
+        )
+
+    print("Running speed test, gimme just a sec...", flush=True)
+
+    try:
+        result = run_speed_test(speedtest)
+
+        download = float(result["download"]["mbps"])
+        upload = float(result["upload"]["mbps"])
+        ping = float(result["idle_latency"]["median_ms"])
+    except subprocess.TimeoutExpired:
+        return show_error(
+            "The speed test did not finish within "
+            f"{SPEEDTEST_TIMEOUT_SECONDS} seconds."
+        )
+    except subprocess.CalledProcessError as error:
+        details = error.stderr.strip()
+
+        if not details:
+            details = (
+                "The benchmark engine exited with status "
+                f"{error.returncode}."
+            )
+
+        return show_error(details)
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        return show_error(
+            "The benchmark engine returned an incomplete or invalid result."
+        )
+    except KeyboardInterrupt:
+        return show_error("The speed test was canceled.")
+
+    rating, color = rate_connection(download, upload, ping)
+
+    print()
+    print(f"Download:  {download:.1f} Mbps")
+    print(f"Upload:    {upload:.1f} Mbps")
+    print(f"Ping:      {ping:.1f} ms")
+    print()
+    print(f"Rating:    {color}{rating}{RESET}")
+
+    wait_for_quit()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

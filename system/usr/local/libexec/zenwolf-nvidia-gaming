@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+readonly hardware_config="${ZENWOLF_HARDWARE_CONFIG:-/etc/zenwolf/hardware.conf}"
+readonly profile_path='/sys/firmware/acpi/platform_profile'
+readonly profile_choices_path='/sys/firmware/acpi/platform_profile_choices'
+readonly previous_profile_path='/run/zenwolf-nvidia-gaming.previous-profile'
+
+require_root() {
+    if (( EUID != 0 )); then
+        printf 'ERROR: this helper must run as root.\n' >&2
+        exit 1
+    fi
+}
+
+load_hardware_config() {
+    local config_mode
+
+    [[ -r "$hardware_config" ]] || {
+        printf 'ERROR: hardware configuration is absent: %s\n' \
+            "$hardware_config" >&2
+        exit 1
+    }
+    [[ "$(stat -c %u "$hardware_config")" == '0' ]] || {
+        printf 'ERROR: hardware configuration must be owned by root.\n' >&2
+        exit 1
+    }
+    config_mode="$((8#$(stat -c %a "$hardware_config")))"
+    (( (config_mode & 022) == 0 )) || {
+        printf 'ERROR: hardware configuration must not be group/world writable.\n' >&2
+        exit 1
+    }
+
+    # This file is trusted only after the root ownership and mode checks above.
+    # shellcheck source=/dev/null
+    source "$hardware_config"
+
+    : "${ZENWOLF_NVIDIA_PCI_ID:?set ZENWOLF_NVIDIA_PCI_ID in $hardware_config}"
+    : "${ZENWOLF_NVIDIA_RENDER:?set ZENWOLF_NVIDIA_RENDER in $hardware_config}"
+    : "${ZENWOLF_GAMING_PLATFORM_PROFILE:?set ZENWOLF_GAMING_PLATFORM_PROFILE in $hardware_config}"
+
+    [[ "$ZENWOLF_NVIDIA_PCI_ID" =~ ^[[:xdigit:]]{4}:[[:xdigit:]]{2}:[[:xdigit:]]{2}\.[0-7]$ ]] || {
+        printf 'ERROR: invalid NVIDIA PCI identifier: %s\n' \
+            "$ZENWOLF_NVIDIA_PCI_ID" >&2
+        exit 1
+    }
+    [[ "$ZENWOLF_NVIDIA_RENDER" == /dev/dri/by-path/*-render ]] || {
+        printf 'ERROR: invalid NVIDIA render-node path: %s\n' \
+            "$ZENWOLF_NVIDIA_RENDER" >&2
+        exit 1
+    }
+    [[ "$ZENWOLF_GAMING_PLATFORM_PROFILE" =~ ^[a-zA-Z0-9_-]+$ ]] || {
+        printf 'ERROR: invalid platform profile: %s\n' \
+            "$ZENWOLF_GAMING_PLATFORM_PROFILE" >&2
+        exit 1
+    }
+
+    readonly nvidia_pci_path="/sys/bus/pci/devices/$ZENWOLF_NVIDIA_PCI_ID"
+    readonly nvidia_render_path="$ZENWOLF_NVIDIA_RENDER"
+    readonly gaming_profile="$ZENWOLF_GAMING_PLATFORM_PROFILE"
+}
+
+restore_profile() {
+    if [[ -s "$previous_profile_path" ]]; then
+        previous_profile="$(<"$previous_profile_path")"
+        if grep -qw -- "$previous_profile" "$profile_choices_path"; then
+            printf '%s\n' "$previous_profile" > "$profile_path"
+        else
+            printf 'WARNING: refusing unknown saved platform profile: %s\n' \
+                "$previous_profile" >&2
+        fi
+        rm -f "$previous_profile_path"
+    fi
+}
+
+start_gaming() {
+    [[ -r "$profile_path" && -w "$profile_path" ]] || {
+        printf 'ERROR: platform profile control is unavailable.\n' >&2
+        return 1
+    }
+    [[ -r "$profile_choices_path" ]] || {
+        printf 'ERROR: platform profile choices are unavailable.\n' >&2
+        return 1
+    }
+    grep -qw -- "$gaming_profile" "$profile_choices_path" || {
+        printf 'ERROR: configured gaming platform profile is unavailable: %s\n' \
+            "$gaming_profile" >&2
+        return 1
+    }
+    [[ -d "$nvidia_pci_path" ]] || {
+        printf 'ERROR: NVIDIA PCI device is unavailable: %s\n' "$nvidia_pci_path" >&2
+        return 1
+    }
+
+    current_profile="$(<"$profile_path")"
+    printf '%s\n' "$current_profile" > "$previous_profile_path"
+    chmod 600 "$previous_profile_path"
+
+    rollback_start() {
+        systemctl stop nvidia-powerd.service >/dev/null 2>&1 || true
+        if [[ -d /sys/module/nvidia_drm ]]; then
+            modprobe -r nvidia_drm >/dev/null 2>&1 || true
+        fi
+        if [[ -d /sys/module/nvidia_modeset ]]; then
+            modprobe -r nvidia_modeset >/dev/null 2>&1 || true
+        fi
+        modprobe nvidia >/dev/null 2>&1 || true
+        restore_profile
+    }
+
+    if ! printf '%s\n' "$gaming_profile" > "$profile_path"; then
+        rollback_start
+        return 1
+    fi
+    if ! modprobe nvidia_drm; then
+        rollback_start
+        return 1
+    fi
+
+    udevadm settle --timeout=10 || true
+    for _ in {1..50}; do
+        [[ -e "$nvidia_render_path" ]] && break
+        sleep 0.1
+    done
+
+    if [[ "$(< /sys/module/nvidia_drm/parameters/modeset)" != 'Y' ]]; then
+        printf 'ERROR: NVIDIA DRM modeset is not enabled.\n' >&2
+        rollback_start
+        return 1
+    fi
+    if [[ ! -e "$nvidia_render_path" ]]; then
+        printf 'ERROR: NVIDIA render node was not created: %s\n' \
+            "$nvidia_render_path" >&2
+        rollback_start
+        return 1
+    fi
+
+    if ! systemctl start nvidia-powerd.service; then
+        rollback_start
+        return 1
+    fi
+    if ! systemctl is-active --quiet nvidia-powerd.service; then
+        printf 'ERROR: nvidia-powerd did not become active.\n' >&2
+        rollback_start
+        return 1
+    fi
+
+    printf 'Zenwolf gaming mode started: %s, NVIDIA DRM, Dynamic Boost.\n' \
+        "$gaming_profile"
+}
+
+stop_gaming() {
+    status=0
+
+    if ! systemctl stop nvidia-powerd.service; then
+        printf 'WARNING: nvidia-powerd did not stop cleanly.\n' >&2
+        status=1
+    fi
+
+    for module in nvidia_uvm nvidia_drm nvidia_modeset; do
+        if [[ -d "/sys/module/$module" ]] && ! modprobe -r "$module"; then
+            printf 'ERROR: could not unload %s; an NVIDIA client may remain.\n' \
+                "$module" >&2
+            status=1
+        fi
+    done
+
+    if ! modprobe nvidia; then
+        printf 'ERROR: could not restore the core NVIDIA binding.\n' >&2
+        status=1
+    fi
+
+    restore_profile
+
+    if (( status == 0 )); then
+        printf 'Zenwolf gaming mode stopped; ordinary GPU policy restored.\n'
+    fi
+    return "$status"
+}
+
+require_root
+load_hardware_config
+
+case "${1:-}" in
+    start)
+        start_gaming
+        ;;
+    stop)
+        stop_gaming
+        ;;
+    *)
+        printf 'Usage: %s {start|stop}\n' "$0" >&2
+        exit 2
+        ;;
+esac

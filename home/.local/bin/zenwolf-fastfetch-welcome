@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+# The compact Zenwolf profile fits ordinary tiles, so show it in every new
+# interactive Ghostty shell. Keep SSH and other terminal programs quiet.
+
+[[ -t 1 ]] || exit 0
+[[ -z ${SSH_CONNECTION:-} ]] || exit 0
+
+if [[ ${TERM:-} != xterm-ghostty && ${TERM_PROGRAM:-} != ghostty ]]; then
+    exit 0
+fi
+
+command -v fastfetch >/dev/null 2>&1 || exit 0
+
+exec fastfetch

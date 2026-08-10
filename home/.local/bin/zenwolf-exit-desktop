@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+
+set -uo pipefail
+
+readonly -a session_services=(
+    'zenwolf-waybar.service'
+    'zenwolf-hyprpaper.service'
+    'xdg-desktop-portal-gtk.service'
+    'xdg-desktop-portal-hyprland.service'
+)
+
+# Stop Wayland clients while Hyprland's socket is still valid. Otherwise they
+# can report broken pipes or crash while the compositor is disappearing.
+if ! systemctl --user stop "${session_services[@]}"; then
+    printf 'WARNING: a desktop session service did not stop cleanly.\n' >&2
+fi
+systemctl --user reset-failed "${session_services[@]}" >/dev/null 2>&1 || true
+
+if ! hyprctl dispatch 'hl.dsp.exit()'; then
+    printf 'ERROR: Hyprland refused the exit request.\n' >&2
+    exit 1
+fi

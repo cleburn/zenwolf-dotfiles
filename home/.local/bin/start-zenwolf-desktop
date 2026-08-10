@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly hardware_config="${ZENWOLF_HARDWARE_CONFIG:-/etc/zenwolf/hardware.conf}"
+if [[ -r "$hardware_config" ]]; then
+    # shellcheck source=/dev/null
+    source "$hardware_config"
+fi
+
+readonly amd_drm="${ZENWOLF_DESKTOP_DRM:-}"
+readonly mesa_egl="${ZENWOLF_MESA_EGL:-/usr/share/glvnd/egl_vendor.d/50_mesa.json}"
+readonly runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$UID}"
+readonly session_mode="${ZENWOLF_SESSION_MODE:-zen}"
+readonly transition_request="$runtime_dir/zenwolf-session.request"
+readonly gaming_launcher="$HOME/.local/bin/start-zenwolf-gaming"
+readonly -a portal_services=(
+    'xdg-desktop-portal-hyprland.service'
+    'xdg-desktop-portal-gtk.service'
+)
+readonly -a session_services=(
+    "${portal_services[@]}"
+    'zenwolf-hyprpaper.service'
+    'zenwolf-waybar.service'
+)
+
+if [[ "$session_mode" != 'zen' && "$session_mode" != 'game' ]]; then
+    printf 'ERROR: unsupported Zenwolf session mode: %s\n' "$session_mode" >&2
+    exit 1
+fi
+
+# A request is meaningful only when it is written by the desktop that is
+# about to exit. Clear anything left by a killed or interrupted old session.
+rm -f "$transition_request"
+
+if [[ -z "$amd_drm" ]]; then
+    printf 'ERROR: set ZENWOLF_DESKTOP_DRM in %s.\n' "$hardware_config" >&2
+    exit 1
+fi
+
+if [[ ! -c "$amd_drm" ]]; then
+    printf 'ERROR: AMD DRM path is not a character device: %s\n' "$amd_drm" >&2
+    exit 1
+fi
+
+if [[ ! -r "$mesa_egl" ]]; then
+    printf 'ERROR: Mesa EGL vendor manifest is not readable: %s\n' "$mesa_egl" >&2
+    exit 1
+fi
+
+export AQ_DRM_DEVICES="$amd_drm"
+export __EGL_VENDOR_LIBRARY_FILENAMES="$mesa_egl"
+export __GLX_VENDOR_LIBRARY_NAME='mesa'
+
+printf 'Starting Zenwolf desktop\n'
+printf '  DRM: %s -> %s\n' "$AQ_DRM_DEVICES" "$(readlink -e "$AQ_DRM_DEVICES")"
+printf '  EGL: %s\n' "$__EGL_VENDOR_LIBRARY_FILENAMES"
+printf '  GLX: %s\n' "$__GLX_VENDOR_LIBRARY_NAME"
+
+restart_portals_when_ready() {
+    local attempt current_desktop hyprland_signature manager_environment
+    local wayland_display
+
+    for ((attempt = 0; attempt < 150; attempt++)); do
+        manager_environment="$(
+            systemctl --user show-environment 2>/dev/null || true
+        )"
+        wayland_display="$(
+            sed -n 's/^WAYLAND_DISPLAY=//p' <<<"$manager_environment" \
+                | tail -n 1
+        )"
+        current_desktop="$(
+            sed -n 's/^XDG_CURRENT_DESKTOP=//p' <<<"$manager_environment" \
+                | tail -n 1
+        )"
+        hyprland_signature="$(
+            sed -n 's/^HYPRLAND_INSTANCE_SIGNATURE=//p' \
+                <<<"$manager_environment" | tail -n 1
+        )"
+
+        if [[ -n "$wayland_display" && -S "$runtime_dir/$wayland_display" \
+            && "$current_desktop" == *Hyprland* \
+            && -n "$hyprland_signature" ]]; then
+            systemctl --user reset-failed "${portal_services[@]}" \
+                >/dev/null 2>&1 || true
+            if ! systemctl --user restart "${portal_services[@]}"; then
+                printf 'WARNING: failed to start a desktop portal backend.\n' >&2
+            fi
+            return
+        fi
+
+        sleep 0.1
+    done
+
+    printf 'WARNING: Wayland did not become ready for portal recovery.\n' >&2
+}
+
+# Compositor-bound services can fail while the previous compositor is
+# disappearing. Clear stale state now, then restart the portal backends only
+# after the new Wayland socket is ready. Hyprland starts Waybar and hyprpaper.
+systemctl --user reset-failed "${session_services[@]}" >/dev/null 2>&1 || true
+restart_portals_when_ready &
+portal_recovery_pid=$!
+
+desktop_status=0
+/usr/bin/start-hyprland "$@" || desktop_status=$?
+
+if kill -0 "$portal_recovery_pid" 2>/dev/null; then
+    kill "$portal_recovery_pid" 2>/dev/null || true
+fi
+wait "$portal_recovery_pid" 2>/dev/null || true
+
+# These services require a live Hyprland socket. Stop them before automatic
+# retries can hit the rate limit, then clear exit races from the user manager.
+systemctl --user stop "${session_services[@]}" >/dev/null 2>&1 || true
+systemctl --user reset-failed "${session_services[@]}" >/dev/null 2>&1 || true
+
+if [[ "$desktop_status" == '0' && "$session_mode" == 'zen' \
+    && -r "$transition_request" ]]; then
+    IFS= read -r requested_session <"$transition_request" || true
+    rm -f "$transition_request"
+
+    if [[ "$requested_session" == 'game' ]]; then
+        if [[ ! -x "$gaming_launcher" ]]; then
+            printf 'ERROR: gaming launcher is not executable: %s\n' \
+                "$gaming_launcher" >&2
+            exit 1
+        fi
+        printf 'Switching from Zen to Game...\n'
+        exec "$gaming_launcher"
+    fi
+
+    printf 'WARNING: ignored invalid Zenwolf session request: %s\n' \
+        "$requested_session" >&2
+fi
+
+exit "$desktop_status"

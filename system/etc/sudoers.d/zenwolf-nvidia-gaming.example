@@ -1,0 +1,6 @@
+# Allow only the fixed Zenwolf gaming service lifecycle without a password.
+# The unit and its root helper remain administrator-owned.
+# Replace change_me_user before validating and installing this template.
+Cmnd_Alias ZENWOLF_NVIDIA_GAMING = /usr/bin/systemctl start zenwolf-nvidia-gaming.service, /usr/bin/systemctl stop zenwolf-nvidia-gaming.service
+
+change_me_user ALL=(root) NOPASSWD: ZENWOLF_NVIDIA_GAMING

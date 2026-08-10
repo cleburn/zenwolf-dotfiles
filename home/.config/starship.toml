@@ -1,0 +1,37 @@
+"$schema" = "https://starship.rs/config-schema.json"
+
+# Zenwolf's prompt stays deliberately small: current location, Git context,
+# and the command-status character. Everything else belongs in explicit tools
+# such as Fastfetch, Waybar, or Git itself.
+add_newline = false
+format = "$directory$git_branch$git_status$character"
+
+[directory]
+format = "[$path]($style) "
+style = "bold bright-cyan"
+truncation_length = 2
+truncate_to_repo = true
+
+[git_branch]
+symbol = " "
+format = "[$symbol$branch]($style) "
+style = "cyan"
+
+[git_status]
+format = "([$all_status$ahead_behind]($style) )"
+style = "yellow"
+conflicted = "="
+ahead = "⇡"
+behind = "⇣"
+diverged = "⇕"
+up_to_date = ""
+untracked = "?"
+stashed = "$"
+modified = "!"
+staged = "+"
+renamed = "»"
+deleted = "-"
+
+[character]
+success_symbol = "[❯](bold #22c55e) "
+error_symbol = "[❯](bold #ef4444) "

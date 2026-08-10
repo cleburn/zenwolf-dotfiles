@@ -1,0 +1,16 @@
+* {
+    background: #0a060fe8;
+    surface: #111827e0;
+    surface-hover: #243247ee;
+    foreground: #afdbc9;
+    muted: #4e6568;
+    accent: #51a192;
+    panel-border: #51a192;
+    window-radius: 12px;
+    control-radius: 8px;
+    selection-text: #0a060f;
+    urgent-text: #f9fafb;
+    selection: #33908fe8;
+    red: #ef4444;
+    green: #22c55e;
+}

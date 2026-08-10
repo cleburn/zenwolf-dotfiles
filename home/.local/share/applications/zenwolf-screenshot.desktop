@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Screenshot (Annotate)
+GenericName=Screenshot Tool
+Comment=Select a region and annotate it with Satty
+Icon=camera-photo
+Exec=zenwolf-screenshot
+Terminal=false
+NoDisplay=true
+Categories=Graphics;
+Keywords=screenshot;capture;region;annotate;satty;
+StartupNotify=false

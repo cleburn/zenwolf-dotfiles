@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly runtime_root="${XDG_RUNTIME_DIR:-/tmp}"
+
+exec 9>"$runtime_root/zenwolf-cava.lock"
+if ! flock -n 9; then
+    [[ "${1:-toggle}" == "status" ]] && printf 'transitioning\n'
+    exit 0
+fi
+
+usage() {
+    printf 'Usage: zenwolf-cava {toggle|show|hide|status}\n'
+}
+
+import_hyprland_environment() {
+    local value
+
+    if [[ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+        value="$(systemctl --user show-environment \
+            | sed -n 's/^HYPRLAND_INSTANCE_SIGNATURE=//p')"
+        [[ -n "$value" ]] && export HYPRLAND_INSTANCE_SIGNATURE="$value"
+    fi
+
+    if [[ -z "${WAYLAND_DISPLAY:-}" ]]; then
+        value="$(systemctl --user show-environment \
+            | sed -n 's/^WAYLAND_DISPLAY=//p')"
+        [[ -n "$value" ]] && export WAYLAND_DISPLAY="$value"
+    fi
+}
+
+audio_window_exists() {
+    audio_window_address >/dev/null
+}
+
+audio_window_address() {
+    hyprctl clients -j \
+        | jq -er 'first(.[] | select(.initialTitle == "cava") | .address)'
+}
+
+audio_workspace_name() {
+    hyprctl clients -j \
+        | jq -er 'first(.[] | select(.initialTitle == "cava") | .workspace.name)'
+}
+
+audio_window_is_visible() {
+    [[ "$(audio_workspace_name)" != "special:audio" ]]
+}
+
+audio_window_is_pinned() {
+    hyprctl clients -j \
+        | jq -e 'first(.[] | select(.initialTitle == "cava") | .pinned)' \
+        >/dev/null
+}
+
+active_workspace_id() {
+    hyprctl activeworkspace -j | jq -er '.id | select(. >= 0)'
+}
+
+move_audio_window() {
+    local address="$1"
+    local workspace="$2"
+
+    hyprctl dispatch \
+        "hl.dsp.window.move({ workspace = \"$workspace\", follow = false, window = \"address:$address\" })" \
+        >/dev/null
+}
+
+set_audio_pin() {
+    local action="$1"
+    local address="$2"
+
+    hyprctl dispatch \
+        "hl.dsp.window.pin({ action = \"$action\", window = \"address:$address\" })" \
+        >/dev/null
+}
+
+focus_audio_window() {
+    local address="$1"
+
+    hyprctl dispatch \
+        "hl.dsp.focus({ window = \"address:$address\" })" \
+        >/dev/null
+}
+
+start_audio_window() {
+    local attempt
+
+    # The child must not inherit the lifecycle lock or the caller's terminal.
+    # Otherwise Ghostty holds the lock for its entire lifetime and later
+    # Super+A requests cannot hide or restore the scratchpad.
+    setsid -f ghostty \
+        --title=cava \
+        -e cava \
+        </dev/null >/dev/null 2>&1 9>&-
+
+    for attempt in {1..30}; do
+        audio_window_exists && return 0
+        sleep 0.1
+    done
+
+    printf 'ERROR: Cava did not create its Hyprland window.\n' >&2
+    return 1
+}
+
+show_audio_window() {
+    local address
+    local workspace
+
+    workspace="$(active_workspace_id)"
+    audio_window_exists || start_audio_window
+    address="$(audio_window_address)"
+
+    move_audio_window "$address" "$workspace"
+    audio_window_is_pinned && set_audio_pin off "$address"
+    focus_audio_window "$address"
+}
+
+hide_audio_window() {
+    local address
+
+    audio_window_exists || return 0
+    address="$(audio_window_address)"
+
+    audio_window_is_pinned && set_audio_pin off "$address"
+    move_audio_window "$address" "special:audio"
+}
+
+import_hyprland_environment
+
+if [[ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+    printf 'ERROR: no active Hyprland session was found.\n' >&2
+    exit 1
+fi
+
+case "${1:-toggle}" in
+    toggle)
+        if audio_window_exists && audio_window_is_visible; then
+            hide_audio_window
+        else
+            show_audio_window
+        fi
+        ;;
+    show)
+        show_audio_window
+        ;;
+    hide)
+        hide_audio_window
+        ;;
+    status)
+        if ! audio_window_exists; then
+            printf 'stopped\n'
+        elif audio_window_is_visible; then
+            printf 'visible\n'
+        else
+            printf 'hidden\n'
+        fi
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac

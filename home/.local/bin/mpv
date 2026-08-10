@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly hardware_config="${ZENWOLF_HARDWARE_CONFIG:-/etc/zenwolf/hardware.conf}"
+if [[ -r "$hardware_config" ]]; then
+    # shellcheck source=/dev/null
+    source "$hardware_config"
+fi
+
+readonly radeon_vulkan_icd="${ZENWOLF_RADEON_VULKAN_ICD:-/usr/share/vulkan/icd.d/radeon_icd.json}"
+
+if [[ ! -r "$radeon_vulkan_icd" ]]; then
+    printf 'ERROR: Radeon Vulkan manifest is not readable: %s\n' \
+        "$radeon_vulkan_icd" >&2
+    exit 1
+fi
+
+# Zenwolf's desktop and ordinary media playback belong to the integrated AMD
+# GPU. Scope Vulkan driver discovery to Radeon for mpv without restricting
+# games or other applications that may deliberately use NVIDIA later.
+export VK_DRIVER_FILES="$radeon_vulkan_icd"
+
+exec /usr/bin/mpv "$@"

@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly spotify_path="$HOME/.local/share/spotify-launcher/install/usr/share/spotify"
+readonly theme_source="$HOME/.config/zenwolf/current"
+readonly theme_target="$HOME/.config/spicetify/Themes/Zenwolf"
+
+usage() {
+    printf 'Usage: zenwolf-spicetify {setup|refresh|status|repair|restore}\n'
+}
+
+spicetify_bin() {
+    if [[ -x "$HOME/.spicetify/spicetify" ]]; then
+        printf '%s\n' "$HOME/.spicetify/spicetify"
+    elif [[ -x /usr/bin/spicetify ]]; then
+        printf '%s\n' /usr/bin/spicetify
+    else
+        printf 'ERROR: Spicetify is not installed.\n' >&2
+        return 1
+    fi
+}
+
+install_theme() {
+    local source_color="$theme_source/spicetify-color.ini"
+    local source_css="$theme_source/spicetify-user.css"
+
+    [[ -r "$source_color" ]] || {
+        printf 'ERROR: active Spotify palette is missing: %s\n' "$source_color" >&2
+        return 1
+    }
+    [[ -r "$source_css" ]] || {
+        printf 'ERROR: active Spotify stylesheet is missing: %s\n' "$source_css" >&2
+        return 1
+    }
+
+    install -d -m 755 "$theme_target"
+    install -m 644 "$source_color" "$theme_target/color.ini"
+    install -m 644 "$source_css" "$theme_target/user.css"
+}
+
+configure() {
+    local spicetify_command="$1"
+
+    [[ -d "$spotify_path" ]] || {
+        printf 'ERROR: spotify-launcher client is missing: %s\n' "$spotify_path" >&2
+        return 1
+    }
+
+    "$spicetify_command" config \
+        spotify_path "$spotify_path" \
+        current_theme Zenwolf \
+        color_scheme Zenwolf \
+        inject_css 1 \
+        inject_theme_js 0 \
+        replace_colors 1 \
+        overwrite_assets 0 \
+        check_spicetify_update 0
+}
+
+readonly command_name="${1:-status}"
+readonly executable="$(spicetify_bin)"
+
+case "$command_name" in
+    setup)
+        install_theme
+        configure "$executable"
+        "$executable" -n backup apply
+        ;;
+    refresh)
+        install_theme
+        "$executable" -n refresh
+        ;;
+    status)
+        printf 'Executable: '
+        "$executable" --version
+        printf 'Spotify:    %s\n' "$spotify_path"
+        printf 'Theme:      %s\n' "$theme_target"
+        printf 'Configured: %s / %s\n' \
+            "$("$executable" config current_theme)" \
+            "$("$executable" config color_scheme)"
+        ;;
+    repair)
+        install_theme
+        configure "$executable"
+        "$executable" -n restore backup apply
+        ;;
+    restore)
+        "$executable" -n restore
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac

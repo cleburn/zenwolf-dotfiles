@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly screenshot="$HOME/.local/bin/zenwolf-screenshot"
+readonly recorder="$HOME/.local/bin/zenwolf-record"
+readonly recorder_unit='zenwolf-screen-recorder.service'
+
+if /usr/bin/systemctl --user is-active --quiet "$recorder_unit"; then
+    readonly -a recording_actions=('Stop screen recording')
+else
+    readonly -a recording_actions=('Record full screen' 'Record a region')
+fi
+
+if ! choice="$(
+    printf '%s\n' \
+        'Full screenshot' \
+        'Region screenshot' \
+        'Annotate screenshot' \
+        "${recording_actions[@]}" \
+        | /usr/bin/rofi -dmenu -i -p 'Capture'
+)"; then
+    exit 0
+fi
+readonly choice
+
+case "$choice" in
+    'Full screenshot')
+        exec "$screenshot" full
+        ;;
+    'Region screenshot')
+        exec "$screenshot" region
+        ;;
+    'Annotate screenshot')
+        exec "$screenshot" annotate
+        ;;
+    'Record full screen')
+        exec "$recorder" full
+        ;;
+    'Record a region')
+        exec "$recorder" region
+        ;;
+    'Stop screen recording')
+        exec "$recorder"
+        ;;
+    '')
+        exit 0
+        ;;
+    *)
+        printf 'ERROR: unsupported capture action: %s\n' "$choice" >&2
+        exit 2
+        ;;
+esac

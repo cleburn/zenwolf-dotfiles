@@ -1,0 +1,13 @@
+# Copy this file to /etc/zenwolf/hardware.conf, replace every CHANGE_ME value,
+# then make it root-owned and not writable by group or other users.
+
+ZENWOLF_SESSION_USER='CHANGE_ME_USER'
+ZENWOLF_DESKTOP_DRM='CHANGE_ME_DRM_DEVICE'
+ZENWOLF_NVIDIA_PCI_ID='CHANGE_ME_PCI_ID'
+ZENWOLF_NVIDIA_RENDER='CHANGE_ME_NVIDIA_RENDER_NODE'
+ZENWOLF_GAMING_PLATFORM_PROFILE='CHANGE_ME_PLATFORM_PROFILE'
+
+# These Arch defaults normally need no change.
+ZENWOLF_RADEON_VULKAN_ICD='/usr/share/vulkan/icd.d/radeon_icd.json'
+ZENWOLF_NVIDIA_VULKAN_ICD='/usr/share/vulkan/icd.d/nvidia_icd.json'
+ZENWOLF_MESA_EGL='/usr/share/glvnd/egl_vendor.d/50_mesa.json'

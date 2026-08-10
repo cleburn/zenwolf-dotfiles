@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+# Thunar is a GTK 3 application, but this bare Hyprland session has no
+# XSettings manager. Scope the generated Zenwolf GTK theme to Thunar alone so
+# other GTK and libadwaita applications remain free to manage their own style.
+exec env GTK_THEME=Zenwolf /usr/bin/thunar "$@"

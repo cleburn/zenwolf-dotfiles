@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly config_root="$HOME/.config/zenwolf"
+readonly themes_root="$config_root/themes"
+readonly runtime_root="${XDG_RUNTIME_DIR:-/tmp}"
+readonly selector_theme="$HOME/.config/rofi/zenwolf-theme-selector.rasi"
+readonly theme_builder="$HOME/.local/bin/zenwolf-theme-build"
+readonly theme_apply="$HOME/.local/bin/zenwolf-theme"
+
+declare -a slugs=()
+declare -a names=()
+declare -a wallpapers=()
+declare -a availability=()
+active_theme='none'
+active_index=''
+load_error=''
+
+usage() {
+    printf 'Usage: zenwolf-theme-select [menu|list]\n'
+}
+
+show_error() {
+    local message="$1"
+
+    printf 'ERROR: %s\n' "$message" >&2
+    if [[ -x /usr/bin/rofi ]]; then
+        /usr/bin/rofi -e "$message" >/dev/null 2>&1 || true
+    fi
+}
+
+load_profiles() {
+    local index metadata name name_output profile slug wallpaper
+    local theme_list
+
+    [[ -x "$theme_builder" ]] || {
+        load_error="Theme builder is absent or not executable: $theme_builder"
+        return 1
+    }
+    [[ -x "$theme_apply" ]] || {
+        load_error="Theme application helper is absent or not executable: $theme_apply"
+        return 1
+    }
+    command -v jq >/dev/null || {
+        load_error='Required command is absent: jq'
+        return 1
+    }
+
+    if ! theme_list=$("$theme_builder" list 2>&1); then
+        load_error="$theme_list"
+        return 1
+    fi
+    [[ -n "$theme_list" ]] || {
+        load_error='No generated theme profiles are available'
+        return 1
+    }
+    while IFS= read -r slug; do
+        slugs+=("$slug")
+    done <<<"$theme_list"
+
+    if ! active_theme=$("$theme_apply" status 2>&1); then
+        load_error="$active_theme"
+        return 1
+    fi
+    for index in "${!slugs[@]}"; do
+        slug="${slugs[$index]}"
+        profile="$themes_root/$slug/profile.json"
+
+        if ! name_output=$(jq -er \
+            '.name | select(type == "string" and length > 0)' \
+            "$profile" 2>&1); then
+            load_error="Could not read the profile name from $profile: $name_output"
+            return 1
+        fi
+        name="$name_output"
+        if ! metadata=$("$theme_builder" metadata "$slug" 2>&1); then
+            load_error="$metadata"
+            return 1
+        fi
+        IFS=$'\t' read -r wallpaper _ <<<"$metadata"
+
+        names+=("$name")
+        wallpapers+=("$wallpaper")
+        if [[ -r "$wallpaper" ]]; then
+            availability+=('ready')
+        else
+            availability+=('wallpaper missing')
+        fi
+        if [[ "$slug" == "$active_theme" ]]; then
+            active_index="$index"
+        fi
+    done
+}
+
+list_profiles() {
+    local index state
+
+    printf 'STATE\tPROFILE\tNAME\tWALLPAPER\n'
+    for index in "${!slugs[@]}"; do
+        state="${availability[$index]}"
+        if [[ "${slugs[$index]}" == "$active_theme" ]]; then
+            state="active; $state"
+        fi
+        printf '%s\t%s\t%s\t%s\n' \
+            "$state" \
+            "${slugs[$index]}" \
+            "${names[$index]}" \
+            "${wallpapers[$index]}"
+    done
+}
+
+emit_entries() {
+    local display icon index name slug
+
+    for index in "${!slugs[@]}"; do
+        slug="${slugs[$index]}"
+        name="${names[$index]}"
+        if [[ "${availability[$index]}" == 'ready' ]]; then
+            icon="thumbnail://${wallpapers[$index]}"
+            display="$name"
+            printf '%s\0display\x1f%s\x1ficon\x1f%s\x1fmeta\x1f%s\n' \
+                "$slug" "$display" "$icon" "$name $slug"
+        else
+            display="$name — wallpaper missing"
+            printf '%s\0display\x1f%s\x1ficon\x1fimage-missing\x1fmeta\x1f%s\x1fnonselectable\x1ftrue\n' \
+                "$slug" "$display" "$name $slug"
+        fi
+    done
+}
+
+open_menu() {
+    local apply_output choice_index selected_row selected_slug
+    local -a rofi_arguments
+
+    [[ -x /usr/bin/rofi ]] || {
+        printf 'ERROR: Rofi is absent or not executable: /usr/bin/rofi\n' >&2
+        return 1
+    }
+    [[ -r "$selector_theme" ]] || {
+        show_error "Selector layout is absent: $selector_theme"
+        return 1
+    }
+
+    # A repeated shortcut is ignored while this interaction owns the selector.
+    exec 9>"$runtime_root/zenwolf-theme-select.lock"
+    flock -n 9 || return 0
+
+    selected_row="${active_index:-0}"
+    rofi_arguments=(
+        -dmenu
+        -no-custom
+        -show-icons
+        -selected-row "$selected_row"
+        -format i
+        -mesg '∞ ZENWOLF THEMES ∞'
+        -theme "$selector_theme"
+    )
+    if [[ -n "$active_index" ]]; then
+        rofi_arguments+=(-a "$active_index")
+    fi
+
+    if ! choice_index=$(
+        emit_entries \
+            | /usr/bin/rofi "${rofi_arguments[@]}"
+    ); then
+        return 0
+    fi
+
+    [[ "$choice_index" =~ ^[0-9]+$ ]] || return 0
+    ((choice_index < ${#slugs[@]})) || {
+        show_error "Rofi returned an invalid theme selection."
+        return 1
+    }
+
+    selected_slug="${slugs[$choice_index]}"
+    if [[ "${availability[$choice_index]}" != 'ready' ]]; then
+        show_error "Wallpaper is missing for ${names[$choice_index]}."
+        return 1
+    fi
+
+    if ! apply_output=$("$theme_apply" "$selected_slug" 2>&1); then
+        show_error "$apply_output"
+        return 1
+    fi
+    printf '%s\n' "$apply_output"
+}
+
+case "${1:-menu}" in
+    menu)
+        if ! load_profiles; then
+            show_error "$load_error"
+            exit 1
+        fi
+        open_menu
+        ;;
+    list)
+        if ! load_profiles; then
+            printf 'ERROR: %s\n' "$load_error" >&2
+            exit 1
+        fi
+        list_profiles
+        ;;
+    -h|--help|help)
+        usage
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac

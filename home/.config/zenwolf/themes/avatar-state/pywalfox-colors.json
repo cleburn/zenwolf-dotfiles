@@ -1,0 +1,27 @@
+{
+  "wallpaper": "~/.local/share/zenwolf/wallpapers/avatar-state.png",
+  "alpha": "100",
+  "special": {
+    "background": "#101820",
+    "foreground": "#e8f3f5",
+    "cursor": "#70e1e7"
+  },
+  "colors": {
+    "color0": "#101820",
+    "color1": "#bd4b2b",
+    "color2": "#5e9b72",
+    "color3": "#d99b32",
+    "color4": "#4a8fa8",
+    "color5": "#a97891",
+    "color6": "#42c9db",
+    "color7": "#101820",
+    "color8": "#60777d",
+    "color9": "#f0784f",
+    "color10": "#7dc992",
+    "color11": "#ffd166",
+    "color12": "#74c8dc",
+    "color13": "#d49ab8",
+    "color14": "#8be8ee",
+    "color15": "#f7ffff"
+  }
+}

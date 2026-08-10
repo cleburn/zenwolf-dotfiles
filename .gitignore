@@ -1,0 +1,26 @@
+.DS_Store
+*.swp
+*.tmp
+*~
+
+# Firefox profile and account state never belongs in this repository.
+home/.mozilla/
+**/profiles.ini
+**/installs.ini
+**/logins.json
+**/key4.db
+**/cert9.db
+**/cookies.sqlite*
+**/places.sqlite*
+**/formhistory.sqlite*
+**/webappsstore.sqlite*
+**/favicons.sqlite*
+**/sessionstore*
+**/recovery.jsonlz4
+**/prefs.js
+**/user.js
+**/extensions.json
+**/containers.json
+
+# The included games create their shared high-score file beside the scripts.
+games/game_high_scores.json

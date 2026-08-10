@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly runtime_root="${XDG_RUNTIME_DIR:-/tmp}"
+
+exec 9>"$runtime_root/zenwolf-btop.lock"
+if ! flock -n 9; then
+    [[ "${1:-toggle}" == "status" ]] && printf 'transitioning\n'
+    exit 0
+fi
+
+usage() {
+    printf 'Usage: zenwolf-btop {toggle|show|hide|status}\n'
+}
+
+import_hyprland_environment() {
+    local value
+
+    if [[ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+        value="$(systemctl --user show-environment \
+            | sed -n 's/^HYPRLAND_INSTANCE_SIGNATURE=//p')"
+        [[ -n "$value" ]] && export HYPRLAND_INSTANCE_SIGNATURE="$value"
+    fi
+
+    if [[ -z "${WAYLAND_DISPLAY:-}" ]]; then
+        value="$(systemctl --user show-environment \
+            | sed -n 's/^WAYLAND_DISPLAY=//p')"
+        [[ -n "$value" ]] && export WAYLAND_DISPLAY="$value"
+    fi
+}
+
+btop_window_exists() {
+    btop_window_address >/dev/null
+}
+
+btop_window_address() {
+    hyprctl clients -j \
+        | jq -er 'first(.[] | select(.initialTitle == "btop") | .address)'
+}
+
+btop_workspace_name() {
+    hyprctl clients -j \
+        | jq -er 'first(.[] | select(.initialTitle == "btop") | .workspace.name)'
+}
+
+btop_window_is_visible() {
+    [[ "$(btop_workspace_name)" != "special:monitor" ]]
+}
+
+active_workspace_id() {
+    hyprctl activeworkspace -j | jq -er '.id | select(. >= 0)'
+}
+
+move_btop_window() {
+    local address="$1"
+    local workspace="$2"
+
+    hyprctl dispatch \
+        "hl.dsp.window.move({ workspace = \"$workspace\", follow = false, window = \"address:$address\" })" \
+        >/dev/null
+}
+
+focus_btop_window() {
+    local address="$1"
+
+    hyprctl dispatch \
+        "hl.dsp.focus({ window = \"address:$address\" })" \
+        >/dev/null
+    hyprctl dispatch 'hl.dsp.window.bring_to_top()' >/dev/null
+}
+
+start_btop_window() {
+    local attempt
+
+    # The child must not inherit the lifecycle lock or the caller's terminal.
+    setsid -f ghostty \
+        --class=zenwolf-monitor \
+        --title=btop \
+        -e /usr/bin/btop \
+        </dev/null >/dev/null 2>&1 9>&-
+
+    for attempt in {1..30}; do
+        btop_window_exists && return 0
+        sleep 0.1
+    done
+
+    printf 'ERROR: btop did not create its Hyprland window.\n' >&2
+    return 1
+}
+
+show_btop_window() {
+    local address
+    local workspace
+
+    workspace="$(active_workspace_id)"
+    btop_window_exists || start_btop_window
+    address="$(btop_window_address)"
+
+    move_btop_window "$address" "$workspace"
+    focus_btop_window "$address"
+}
+
+hide_btop_window() {
+    local address
+
+    btop_window_exists || return 0
+    address="$(btop_window_address)"
+    move_btop_window "$address" "special:monitor"
+}
+
+import_hyprland_environment
+
+if [[ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+    printf 'ERROR: no active Hyprland session was found.\n' >&2
+    exit 1
+fi
+
+case "${1:-toggle}" in
+    toggle)
+        if btop_window_exists && btop_window_is_visible; then
+            hide_btop_window
+        else
+            show_btop_window
+        fi
+        ;;
+    show)
+        show_btop_window
+        ;;
+    hide)
+        hide_btop_window
+        ;;
+    status)
+        if ! btop_window_exists; then
+            printf 'stopped\n'
+        elif btop_window_is_visible; then
+            printf 'visible\n'
+        else
+            printf 'hidden\n'
+        fi
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac

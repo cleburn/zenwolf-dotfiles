@@ -1,0 +1,93 @@
+@import "~/.config/zenwolf/current/rofi.rasi"
+
+window {
+    width: 1040px;
+    padding: 1px;
+    background-color: @background;
+    border: 1px;
+    border-color: @panel-border;
+    border-radius: @window-radius;
+}
+
+mainbox {
+    padding: 18px;
+    spacing: 14px;
+    background-color: transparent;
+    children: [ message, listview ];
+}
+
+message {
+    padding: 10px 12px;
+    background-color: @surface-hover;
+    border: 1px;
+    border-color: @accent;
+    border-radius: @control-radius;
+}
+
+textbox {
+    horizontal-align: 0.5;
+    text-color: @accent;
+    background-color: transparent;
+}
+
+listview {
+    columns: 5;
+    lines: 2;
+    flow: horizontal;
+    fixed-columns: true;
+    fixed-height: true;
+    dynamic: false;
+    cycle: true;
+    spacing: 10px;
+    scrollbar: false;
+    background-color: transparent;
+}
+
+element {
+    padding: 8px;
+    orientation: vertical;
+    children: [ element-icon ];
+    background-color: @surface;
+    text-color: @foreground;
+    border: 1px;
+    border-color: @panel-border;
+    border-radius: @control-radius;
+}
+
+element normal.normal,
+element alternate.normal {
+    background-color: @surface;
+    text-color: @foreground;
+    border-color: @panel-border;
+}
+
+element normal.active,
+element alternate.active {
+    background-color: @surface-hover;
+    text-color: @accent;
+    border: 2px;
+    border-color: @accent;
+}
+
+element selected.normal {
+    background-color: @selection;
+    text-color: @selection-text;
+    border: 2px;
+    border-color: @accent;
+}
+
+element selected.active {
+    background-color: @selection;
+    text-color: @selection-text;
+    border: 3px;
+    border-color: @accent;
+}
+
+element-icon {
+    size: 176px;
+    background-color: transparent;
+}
+
+inputbar {
+    enabled: false;
+}

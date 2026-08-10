@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "name": "Swordsman",
+  "mode": "dark",
+  "cycle_order": 41,
+  "wallpaper": {
+    "path": "~/.local/share/zenwolf/wallpapers/swordsman.png",
+    "sha256": "8bddc760b7746c9ce4c24d01a578fdf9d47254f9b7a10976dc4b26d973875b66"
+  },
+  "palette": {
+    "background": "#0b1021",
+    "foreground": "#f1e6cf",
+    "muted": "#9c96a3",
+    "accent": "#c79a54",
+    "border": "#45506a",
+    "shadow": "#02040a",
+    "selection_text": "#10101c",
+    "urgent_text": "#fff8ed",
+    "waybar_surface": "#141b30",
+    "waybar_surface_hover": "#202943",
+    "rofi_surface": "#11182a",
+    "rofi_surface_hover": "#1e2740",
+    "rofi_selection": "#d4ad68",
+    "ghostty_cursor": "#d4ad68",
+    "ghostty_selection_background": "#414968",
+    "ghostty_selection_foreground": "#fff9e8",
+    "red": "#a94c4c",
+    "green": "#5f816a",
+    "gold": "#c79a54",
+    "terminal": [
+      "#0b1021",
+      "#a94c4c",
+      "#5f816a",
+      "#c79a54",
+      "#4f6f9e",
+      "#86638c",
+      "#5d8b9b",
+      "#ddd4c3",
+      "#5e6477",
+      "#d16e68",
+      "#82a88a",
+      "#e1bd7b",
+      "#7694c2",
+      "#ab82ae",
+      "#82b2bd",
+      "#fff9e8"
+    ],
+    "btop_highlight": "#d4ad68",
+    "btop_selected_background": "#414968",
+    "btop_selected_foreground": "#fff9e8",
+    "btop_meter": "#1e2740",
+    "btop_divider": "#45506a",
+    "btop_gradient": ["#5e6f9f", "#8ba0bc", "#d4ad68"],
+    "cava_gradient": ["#6f78b8", "#82b2bd", "#c79a54", "#e1c88d"]
+  },
+  "opacity": {
+    "waybar": {
+      "background": 0.90,
+      "surface": 0.84,
+      "surface_hover": 0.94,
+      "shadow": 0.34
+    },
+    "rofi": {
+      "background": 0.96,
+      "surface": 0.95,
+      "surface_hover": 0.96,
+      "selection": 0.94
+    }
+  },
+  "appearance": {
+    "waybar": {
+      "panel_radius": 3,
+      "module_radius": 2,
+      "workspace_radius": 2,
+      "tooltip_radius": 3,
+      "shadow_y": 1,
+      "shadow_blur": 4
+    },
+    "rofi": {
+      "window_radius": 4,
+      "control_radius": 2
+    },
+    "ghostty": {
+      "background_opacity": 0.96
+    },
+    "hyprland": {
+      "rounding": 2,
+      "overlay_rounding": 3,
+      "border_size": 1,
+      "active_border_opacity": 0.90,
+      "inactive_border_opacity": 0.60
+    },
+    "hyprlock": {
+      "panel_width": 460,
+      "panel_height": 300,
+      "panel_x": -480,
+      "panel_y": 0,
+      "panel_radius": 4,
+      "panel_opacity": 0.90,
+      "input_width": 340,
+      "input_height": 54,
+      "input_x": -480,
+      "input_y": -60,
+      "input_radius": 2,
+      "input_opacity": 0.96,
+      "time_x": -480,
+      "time_y": 82,
+      "time_size": 64,
+      "identity_x": -480,
+      "identity_y": 28,
+      "identity_size": 16,
+      "background_brightness": 0.68
+    }
+  }
+}

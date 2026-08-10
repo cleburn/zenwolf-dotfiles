@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Screenshot (Region)
+GenericName=Screenshot Tool
+Comment=Select a region and save it immediately
+Icon=camera-photo
+Exec=zenwolf-screenshot region
+Terminal=false
+NoDisplay=true
+Categories=Graphics;
+Keywords=screenshot;capture;region;crop;grim;slurp;
+StartupNotify=false

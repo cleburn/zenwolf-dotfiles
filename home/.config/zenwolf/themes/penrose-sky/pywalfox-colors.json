@@ -1,0 +1,27 @@
+{
+  "wallpaper": "~/.local/share/zenwolf/wallpapers/penrose-triangle-sky.png",
+  "alpha": "100",
+  "special": {
+    "background": "#0a060f",
+    "foreground": "#afdbc9",
+    "cursor": "#51a192"
+  },
+  "colors": {
+    "color0": "#15111a",
+    "color1": "#ef4444",
+    "color2": "#22c55e",
+    "color3": "#f59e0b",
+    "color4": "#4d7985",
+    "color5": "#9b72cf",
+    "color6": "#51a192",
+    "color7": "#0a060f",
+    "color8": "#4e6568",
+    "color9": "#f87171",
+    "color10": "#4ade80",
+    "color11": "#facc15",
+    "color12": "#75aeb8",
+    "color13": "#c4a7e7",
+    "color14": "#9adfd0",
+    "color15": "#f9fafb"
+  }
+}

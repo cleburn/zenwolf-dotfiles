@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly hardware_config="${ZENWOLF_HARDWARE_CONFIG:-/etc/zenwolf/hardware.conf}"
+if [[ -r "$hardware_config" ]]; then
+    # shellcheck source=/dev/null
+    source "$hardware_config"
+fi
+
+readonly gaming_service='zenwolf-nvidia-gaming.service'
+readonly host_nvidia_manifest="${ZENWOLF_NVIDIA_VULKAN_ICD:-/usr/share/vulkan/icd.d/nvidia_icd.json}"
+
+if (( $# == 0 )); then
+    printf 'Usage: zenwolf-nvidia-game COMMAND [ARGUMENT ...]\n' >&2
+    exit 2
+fi
+
+if ! systemctl is-active --quiet "$gaming_service"; then
+    printf 'ERROR: NVIDIA gaming mode is not active.\n' >&2
+    printf 'Exit Hyprland, start the gaming desktop with gamer, then try again.\n' >&2
+    exit 1
+fi
+
+if [[ ! -d /sys/module/nvidia_drm ]]; then
+    printf 'ERROR: nvidia_drm is not loaded. Refusing a degraded presentation path.\n' >&2
+    exit 1
+fi
+
+manifest_source="${VK_DRIVER_FILES:-${VK_ICD_FILENAMES:-}}"
+nvidia_manifests=()
+
+if [[ -n "$manifest_source" ]]; then
+    IFS=':' read -r -a candidate_manifests <<< "$manifest_source"
+    for manifest in "${candidate_manifests[@]}"; do
+        if [[ "${manifest,,}" == *nvidia* ]]; then
+            nvidia_manifests+=("$manifest")
+        fi
+    done
+fi
+
+# Steam itself is deliberately scoped to Radeon. When no NVIDIA manifest was
+# inherited from a runtime, replace that parent scope with the host manifest.
+if (( ${#nvidia_manifests[@]} == 0 )) && [[ -r "$host_nvidia_manifest" ]]; then
+    nvidia_manifests+=("$host_nvidia_manifest")
+fi
+
+if (( ${#nvidia_manifests[@]} == 0 )); then
+    printf 'ERROR: no NVIDIA Vulkan manifest is available in this runtime.\n' >&2
+    exit 1
+fi
+
+printf -v selected_manifests '%s:' "${nvidia_manifests[@]}"
+export VK_DRIVER_FILES="${selected_manifests%:}"
+unset VK_ICD_FILENAMES
+
+unset __EGL_VENDOR_LIBRARY_FILENAMES
+export __GLX_VENDOR_LIBRARY_NAME='nvidia'
+export __NV_PRIME_RENDER_OFFLOAD='1'
+export __VK_LAYER_NV_optimus='NVIDIA_only'
+
+exec "$@"

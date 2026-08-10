@@ -1,0 +1,125 @@
+{
+  "name": "zenwolf",
+  "layer": "top",
+  "position": "top",
+  "height": 38,
+  "margin-top": 8,
+  "margin-left": 10,
+  "margin-right": 10,
+  "spacing": 8,
+  "exclusive": true,
+  "fixed-center": true,
+
+  "modules-left": [
+    "custom/zenwolf-theme",
+    "hyprland/workspaces",
+    "hyprland/window"
+  ],
+  "modules-center": [
+    "clock"
+  ],
+  "modules-right": [
+    "bluetooth",
+    "network",
+    "pulseaudio",
+    "backlight",
+    "battery",
+    "tray"
+  ],
+
+  "hyprland/workspaces": {
+    "format": "{icon}",
+    "format-icons": {
+      "1": "λ",
+      "2": "β",
+      "3": "δ"
+    },
+    "persistent-workspaces": {
+      "*": [1, 2, 3]
+    },
+    "sort-by": "number",
+    "move-to-monitor": true
+  },
+
+  "custom/zenwolf-theme": {
+    "format": "∞",
+    "tooltip-format": "Zenwolf themes\nClick to choose · Super+W cycles",
+    "on-click": "zenwolf-theme-select"
+  },
+
+  "hyprland/window": {
+    "format": "  {title}",
+    "max-length": 48,
+    "separate-outputs": true
+  },
+
+  "clock": {
+    "interval": 60,
+    "format": "  {:%a %b %d  %H:%M}",
+    "tooltip-format": "<big>{:%B %Y}</big>\n<tt><small>{calendar}</small></tt>"
+  },
+
+  "bluetooth": {
+    "format": "  {status}",
+    "format-disabled": "󰂲  disabled",
+    "format-off": "󰂲  off",
+    "format-on": "  on",
+    "format-connected": "  {num_connections}",
+    "format-no-controller": "󰂲  absent",
+    "tooltip-format": "{controller_alias}\nBluetooth {status}\nClick to manage",
+    "tooltip-format-connected": "{controller_alias}\n{num_connections} connected\n\n{device_enumerate}\n\nClick to manage",
+    "tooltip-format-enumerate-connected": "{device_alias}",
+    "on-click": "bluetooth --launch"
+  },
+
+  "network": {
+    "interval": 5,
+    "format-wifi": "  {signalStrength}%",
+    "format-linked": "󰈀  linked",
+    "format-disconnected": "󰖪  offline",
+    "tooltip-format-wifi": "{essid}\n{ipaddr}/{cidr}\nSignal {signalStrength}%\nClick to run netspeed",
+    "tooltip-format-disconnected": "Wi-Fi disconnected\nClick to run netspeed",
+    "on-click": "ghostty --title='Zenwolf Netspeed' -e netspeed"
+  },
+
+  "pulseaudio": {
+    "format": "{icon}  {volume}%",
+    "format-muted": "  muted",
+    "format-icons": {
+      "headphone": "",
+      "speaker": ["", "", ""],
+      "default": ["", "", ""]
+    },
+    "max-volume": 100,
+    "on-click": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+    "on-scroll-up": "true",
+    "on-scroll-down": "true"
+  },
+
+  "backlight": {
+    "interval": 2,
+    "format": "  {percent}%",
+    "on-scroll-up": "true",
+    "on-scroll-down": "true"
+  },
+
+  "battery": {
+    "interval": 15,
+    "states": {
+      "warning": 75,
+      "critical": 14
+    },
+    "format": "{icon}  {capacity}%",
+    "format-charging": "  {capacity}%",
+    "format-plugged": "  {capacity}%",
+    "format-full": "  {capacity}%",
+    "format-icons": ["", "", "", "", ""],
+    "tooltip-format": "{time}\nHealth {health}%\n{cycles} cycles"
+  },
+
+  "tray": {
+    "icon-size": 16,
+    "spacing": 8,
+    "show-passive-items": false
+  }
+}

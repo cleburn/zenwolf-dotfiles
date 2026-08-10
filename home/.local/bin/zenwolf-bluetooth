@@ -1,0 +1,995 @@
+#!/usr/bin/env python3
+
+"""Manage Zenwolf's Bluetooth devices from the terminal and Waybar."""
+
+from dataclasses import dataclass
+import fcntl
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+
+BUSCTL_COMMAND = "busctl"
+BLUETOOTHCTL_COMMAND = "bluetoothctl"
+GHOSTTY_COMMAND = "ghostty"
+BLUEZ_SERVICE = "org.bluez"
+OBJECT_MANAGER_INTERFACE = "org.freedesktop.DBus.ObjectManager"
+MANAGED_OBJECTS_SIGNATURE = "a{oa{sa{sv}}}"
+ADAPTER_INTERFACE = "org.bluez.Adapter1"
+DEVICE_INTERFACE = "org.bluez.Device1"
+
+COMMAND_TIMEOUT_SECONDS = 5
+PROCESS_STOP_TIMEOUT_SECONDS = 3
+DISCOVERY_START_TIMEOUT_SECONDS = 5
+STATE_CHANGE_TIMEOUT_SECONDS = 8
+ACTION_TIMEOUT_SECONDS = 30
+PAIR_TIMEOUT_SECONDS = 90
+CHECK_INTERVAL_SECONDS = 0.2
+
+APPLE_COMPANY_ID = 0x004C
+
+
+class BluetoothError(Exception):
+    """Report an expected Bluetooth application failure."""
+
+
+class Scanner:
+    """Own one temporary visible, pairable discovery session."""
+
+    def __init__(self, bluetoothctl: str) -> None:
+        self.bluetoothctl = bluetoothctl
+        self.process: subprocess.Popen | None = None
+        self.was_discoverable = False
+        self.was_pairable = False
+
+    @property
+    def active(self) -> bool:
+        return self.process is not None and self.process.poll() is None
+
+    def start(self, adapter: "Adapter") -> None:
+        if self.active:
+            return
+
+        self.was_discoverable = adapter.discoverable
+        self.was_pairable = adapter.pairable
+        try:
+            self.process = subprocess.Popen(
+                [self.bluetoothctl],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+        except OSError as error:
+            raise BluetoothError(
+                f"Could not start {BLUETOOTHCTL_COMMAND}: {error}"
+            ) from error
+
+        if self.process.stdin is None:
+            self.stop()
+            raise BluetoothError(
+                f"{BLUETOOTHCTL_COMMAND} did not provide a command pipe."
+            )
+
+        try:
+            self.process.stdin.write(
+                "pairable on\ndiscoverable on\nscan on\n"
+            )
+            self.process.stdin.flush()
+        except (BrokenPipeError, OSError) as error:
+            self.stop()
+            raise BluetoothError(
+                f"{BLUETOOTHCTL_COMMAND} could not start scanning."
+            ) from error
+
+    def stop(self) -> None:
+        process = self.process
+        self.process = None
+
+        if process is None:
+            return
+
+        if process.poll() is None and process.stdin is not None:
+            try:
+                discoverable = "on" if self.was_discoverable else "off"
+                pairable = "on" if self.was_pairable else "off"
+                process.stdin.write(
+                    "scan off\n"
+                    f"discoverable {discoverable}\n"
+                    f"pairable {pairable}\n"
+                    "quit\n"
+                )
+                process.stdin.flush()
+            except (BrokenPipeError, OSError):
+                pass
+
+        try:
+            process.wait(timeout=PROCESS_STOP_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            try:
+                process.wait(timeout=PROCESS_STOP_TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+
+
+@dataclass(frozen=True)
+class Adapter:
+    path: str
+    alias: str
+    address: str
+    powered: bool
+    discovering: bool
+    discoverable: bool
+    pairable: bool
+
+
+@dataclass(frozen=True)
+class Device:
+    path: str
+    adapter_path: str
+    alias: str
+    address: str
+    paired: bool
+    bonded: bool
+    trusted: bool
+    connected: bool
+    blocked: bool
+    name: str | None = None
+    address_type: str | None = None
+    icon: str | None = None
+    rssi: int | None = None
+    manufacturer_ids: tuple[int, ...] = ()
+
+
+def load_managed_objects(busctl: str) -> dict:
+    """Return BlueZ's complete object map as structured JSON."""
+    command = [
+        busctl,
+        "--system",
+        "--json=short",
+        "call",
+        BLUEZ_SERVICE,
+        "/",
+        OBJECT_MANAGER_INTERFACE,
+        "GetManagedObjects",
+    ]
+
+    try:
+        completed = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise BluetoothError(
+            f"BlueZ did not answer within {COMMAND_TIMEOUT_SECONDS} seconds."
+        ) from error
+    except subprocess.CalledProcessError as error:
+        details = error.stderr.strip()
+        if not details:
+            details = f"busctl exited with status {error.returncode}."
+        raise BluetoothError(details) from error
+
+    try:
+        payload = json.loads(completed.stdout)
+    except json.JSONDecodeError as error:
+        raise BluetoothError("busctl returned invalid JSON.") from error
+
+    data = payload.get("data")
+    if payload.get("type") != MANAGED_OBJECTS_SIGNATURE:
+        raise BluetoothError("BlueZ returned an unexpected D-Bus signature.")
+    if (
+        not isinstance(data, list)
+        or len(data) != 1
+        or not isinstance(data[0], dict)
+    ):
+        raise BluetoothError(
+            "BlueZ returned an unexpected object-map structure."
+        )
+    return data[0]
+
+
+def interface_rows(
+    objects: dict,
+    interface_name: str,
+) -> list[tuple[str, dict]]:
+    """Return object paths and properties for one D-Bus interface."""
+    rows = []
+    for path, interfaces in objects.items():
+        if not isinstance(interfaces, dict):
+            continue
+        properties = interfaces.get(interface_name)
+        if isinstance(properties, dict):
+            rows.append((path, properties))
+    return rows
+
+
+def property_data(properties: dict, name: str) -> object:
+    """Unwrap one property from busctl's typed JSON."""
+    wrapped = properties.get(name)
+    if not isinstance(wrapped, dict) or "data" not in wrapped:
+        raise BluetoothError(f"BlueZ did not provide a valid {name}.")
+    return wrapped["data"]
+
+
+def text_property(properties: dict, name: str) -> str:
+    value = property_data(properties, name)
+    if not isinstance(value, str):
+        raise BluetoothError(f"BlueZ returned a non-text {name}.")
+    return value
+
+
+def boolean_property(properties: dict, name: str) -> bool:
+    value = property_data(properties, name)
+    if not isinstance(value, bool):
+        raise BluetoothError(f"BlueZ returned a non-Boolean {name}.")
+    return value
+
+
+def optional_property(properties: dict, name: str) -> object | None:
+    """Unwrap an optional BlueZ property, or return None."""
+    wrapped = properties.get(name)
+    if not isinstance(wrapped, dict):
+        return None
+    return wrapped.get("data")
+
+
+def optional_text_property(properties: dict, name: str) -> str | None:
+    value = optional_property(properties, name)
+    return value if isinstance(value, str) else None
+
+
+def optional_integer_property(properties: dict, name: str) -> int | None:
+    value = optional_property(properties, name)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return None
+
+
+def manufacturer_ids(properties: dict) -> tuple[int, ...]:
+    """Return advertised Bluetooth SIG company identifiers."""
+    data = optional_property(properties, "ManufacturerData")
+    if not isinstance(data, dict):
+        return ()
+
+    identifiers = []
+    for key in data:
+        try:
+            identifiers.append(int(key))
+        except (TypeError, ValueError):
+            continue
+    return tuple(sorted(identifiers))
+
+
+def yes_no(value: object) -> str:
+    if value is True:
+        return "yes"
+    if value is False:
+        return "no"
+    return "unknown"
+
+
+def read_adapter(objects: dict) -> Adapter:
+    rows = interface_rows(objects, ADAPTER_INTERFACE)
+    if len(rows) != 1:
+        raise BluetoothError(
+            "Expected exactly one Bluetooth adapter, "
+            f"but found {len(rows)}."
+        )
+
+    path, properties = rows[0]
+    return Adapter(
+        path=path,
+        alias=text_property(properties, "Alias"),
+        address=text_property(properties, "Address"),
+        powered=boolean_property(properties, "Powered"),
+        discovering=boolean_property(properties, "Discovering"),
+        discoverable=boolean_property(properties, "Discoverable"),
+        pairable=boolean_property(properties, "Pairable"),
+    )
+
+
+def read_devices(objects: dict, adapter_path: str) -> list[Device]:
+    devices = []
+    for path, properties in interface_rows(objects, DEVICE_INTERFACE):
+        device_adapter = text_property(properties, "Adapter")
+        if device_adapter != adapter_path:
+            continue
+        devices.append(
+            Device(
+                path=path,
+                adapter_path=device_adapter,
+                alias=text_property(properties, "Alias"),
+                address=text_property(properties, "Address"),
+                paired=boolean_property(properties, "Paired"),
+                bonded=boolean_property(properties, "Bonded"),
+                trusted=boolean_property(properties, "Trusted"),
+                connected=boolean_property(properties, "Connected"),
+                blocked=boolean_property(properties, "Blocked"),
+                name=optional_text_property(properties, "Name"),
+                address_type=optional_text_property(
+                    properties, "AddressType"
+                ),
+                icon=optional_text_property(properties, "Icon"),
+                rssi=optional_integer_property(properties, "RSSI"),
+                manufacturer_ids=manufacturer_ids(properties),
+            )
+        )
+
+    return sorted(
+        devices,
+        key=lambda device: (
+            not device.connected,
+            not device.paired,
+            device.alias.casefold(),
+            device.address,
+        ),
+    )
+
+
+def read_state(busctl: str) -> tuple[Adapter, list[Device]]:
+    objects = load_managed_objects(busctl)
+    adapter = read_adapter(objects)
+    return adapter, read_devices(objects, adapter.path)
+
+
+def find_device(
+    devices: list[Device],
+    address: str,
+) -> Device | None:
+    wanted = address.casefold()
+    return next(
+        (
+            device
+            for device in devices
+            if device.address.casefold() == wanted
+        ),
+        None,
+    )
+
+
+def wait_for_scan_ready(busctl: str) -> None:
+    deadline = time.monotonic() + DISCOVERY_START_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        adapter, _devices = read_state(busctl)
+        if (
+            adapter.discovering
+            and adapter.discoverable
+            and adapter.pairable
+        ):
+            return
+        time.sleep(CHECK_INTERVAL_SECONDS)
+    raise BluetoothError(
+        "Visible Bluetooth discovery did not start within "
+        f"{DISCOVERY_START_TIMEOUT_SECONDS} seconds."
+    )
+
+
+def wait_for_adapter_power(busctl: str, expected: bool) -> None:
+    deadline = time.monotonic() + STATE_CHANGE_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        adapter, _devices = read_state(busctl)
+        if adapter.powered is expected:
+            return
+        time.sleep(CHECK_INTERVAL_SECONDS)
+    raise BluetoothError(
+        "The Bluetooth adapter did not turn "
+        f"{'on' if expected else 'off'}."
+    )
+
+
+def wait_for_device_property(
+    busctl: str,
+    address: str,
+    property_name: str,
+    expected: bool,
+) -> Device:
+    deadline = time.monotonic() + STATE_CHANGE_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        _adapter, devices = read_state(busctl)
+        device = find_device(devices, address)
+        if device is not None and getattr(device, property_name) is expected:
+            return device
+        time.sleep(CHECK_INTERVAL_SECONDS)
+    raise BluetoothError(
+        f"{address} did not reach {property_name}={yes_no(expected)} "
+        f"within {STATE_CHANGE_TIMEOUT_SECONDS} seconds."
+    )
+
+
+def wait_for_device_removal(busctl: str, address: str) -> None:
+    deadline = time.monotonic() + STATE_CHANGE_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        _adapter, devices = read_state(busctl)
+        if find_device(devices, address) is None:
+            return
+        time.sleep(CHECK_INTERVAL_SECONDS)
+    raise BluetoothError(f"{address} remained after the removal command.")
+
+
+def run_bluetooth_command(
+    bluetoothctl: str,
+    arguments: list[str],
+    *,
+    interactive: bool = False,
+    agent: bool = False,
+    timeout: int = ACTION_TIMEOUT_SECONDS,
+) -> None:
+    """Run one bluetoothctl command without a shell."""
+    command = [bluetoothctl]
+    if agent:
+        command.extend(["--agent", "KeyboardDisplay"])
+    command.extend(arguments)
+
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=not interactive,
+            text=True,
+            timeout=timeout + PROCESS_STOP_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise BluetoothError(
+            f"{BLUETOOTHCTL_COMMAND} did not finish within {timeout} seconds."
+        ) from error
+    except OSError as error:
+        raise BluetoothError(
+            f"Could not run {BLUETOOTHCTL_COMMAND}: {error}"
+        ) from error
+
+    if completed.returncode == 0:
+        return
+    details = ""
+    if completed.stderr:
+        details = completed.stderr.strip()
+    if not details and completed.stdout:
+        details = completed.stdout.strip()
+    if not details:
+        details = (
+            f"{BLUETOOTHCTL_COMMAND} exited with status "
+            f"{completed.returncode}."
+        )
+    raise BluetoothError(details)
+
+
+def set_adapter_power(
+    busctl: str,
+    bluetoothctl: str,
+    powered: bool,
+) -> None:
+    state = "on" if powered else "off"
+    run_bluetooth_command(bluetoothctl, ["power", state])
+    wait_for_adapter_power(busctl, powered)
+    print(f"Bluetooth powered {state}.")
+
+
+def setup_device(
+    busctl: str,
+    bluetoothctl: str,
+    device: Device,
+) -> None:
+    """Pair if needed, then trust and connect a device."""
+    current = device
+    if not current.paired:
+        print("\nFollow any BlueZ passkey or confirmation prompt below.")
+        run_bluetooth_command(
+            bluetoothctl,
+            ["pair", current.address],
+            interactive=True,
+            agent=True,
+            timeout=PAIR_TIMEOUT_SECONDS,
+        )
+        current = wait_for_device_property(
+            busctl, current.address, "paired", True
+        )
+        print(f"Paired {current.alias}.")
+
+    if not current.trusted:
+        run_bluetooth_command(bluetoothctl, ["trust", current.address])
+        current = wait_for_device_property(
+            busctl, current.address, "trusted", True
+        )
+        print(f"Trusted {current.alias}.")
+
+    if not current.connected:
+        run_bluetooth_command(bluetoothctl, ["connect", current.address])
+        current = wait_for_device_property(
+            busctl, current.address, "connected", True
+        )
+        print(f"Connected {current.alias}.")
+
+
+def connect_device(
+    busctl: str,
+    bluetoothctl: str,
+    device: Device,
+) -> None:
+    run_bluetooth_command(bluetoothctl, ["connect", device.address])
+    current = wait_for_device_property(
+        busctl, device.address, "connected", True
+    )
+    print(f"Connected {current.alias}.")
+
+
+def disconnect_device(
+    busctl: str,
+    bluetoothctl: str,
+    device: Device,
+) -> None:
+    run_bluetooth_command(bluetoothctl, ["disconnect", device.address])
+    current = wait_for_device_property(
+        busctl, device.address, "connected", False
+    )
+    print(f"Disconnected {current.alias}.")
+
+
+def removal_phrase(device: Device) -> str:
+    return f"REMOVE {device.address}"
+
+
+def remove_device(
+    busctl: str,
+    bluetoothctl: str,
+    device: Device,
+) -> None:
+    if device.connected:
+        raise BluetoothError(
+            "Disconnect the device before removing its pairing."
+        )
+    run_bluetooth_command(bluetoothctl, ["remove", device.address])
+    wait_for_device_removal(busctl, device.address)
+    print(f"Removed the pairing for {device.alias}.")
+
+
+def device_state(device: Device) -> str:
+    labels = [
+        "connected" if device.connected else "disconnected",
+        "paired" if device.paired else "unpaired",
+        "trusted" if device.trusted else "untrusted",
+    ]
+    if device.bonded:
+        labels.append("bonded")
+    if device.blocked:
+        labels.append("blocked")
+    return ", ".join(labels)
+
+
+def alias_is_address(device: Device) -> bool:
+    """Recognize BlueZ's address-shaped fallback alias."""
+    normalized_alias = device.alias.replace("-", ":").casefold()
+    return normalized_alias == device.address.casefold()
+
+
+def device_is_anonymous(device: Device) -> bool:
+    return (
+        not device.paired
+        and device.name is None
+        and alias_is_address(device)
+    )
+
+
+def device_label(device: Device) -> str:
+    if not device_is_anonymous(device):
+        return device.alias
+    if APPLE_COMPANY_ID in device.manufacturer_ids:
+        return "Apple device (unnamed)"
+    return "Nearby device (unnamed)"
+
+
+def signal_description(rssi: int | None) -> str:
+    if rssi is None:
+        return "unknown"
+    if rssi >= -60:
+        quality = "strong"
+    elif rssi >= -75:
+        quality = "medium"
+    else:
+        quality = "weak"
+    return f"{quality} ({rssi} dBm)"
+
+
+def visible_devices(
+    devices: list[Device],
+    show_anonymous: bool,
+) -> list[Device]:
+    if show_anonymous:
+        return devices
+    return [device for device in devices if not device_is_anonymous(device)]
+
+
+def show_status(
+    adapter: Adapter,
+    devices: list[Device],
+    *,
+    show_anonymous: bool = True,
+) -> None:
+    displayed = visible_devices(devices, show_anonymous)
+    hidden_count = len(devices) - len(displayed)
+
+    print("Zenwolf Bluetooth\n")
+    print(f"Adapter:       {adapter.alias}")
+    print(f"Address:       {adapter.address}")
+    print(f"Powered:       {yes_no(adapter.powered)}")
+    print(f"Scanning:      {yes_no(adapter.discovering)}")
+    print(f"Discoverable:  {yes_no(adapter.discoverable)}")
+    print(f"Pairable:      {yes_no(adapter.pairable)}")
+    print(f"Known devices: {len(devices)}")
+    if hidden_count:
+        print(f"Hidden signals: {hidden_count} unnamed")
+    print("\nDevices:")
+    if not displayed:
+        print("  None")
+    for number, device in enumerate(displayed, start=1):
+        print(f"  {number}. {device_label(device)}")
+        print(f"     Address: {device.address}")
+        print(f"     State:   {device_state(device)}")
+        if device.rssi is not None:
+            print(f"     Signal:  {signal_description(device.rssi)}")
+
+
+def show_device(device: Device) -> None:
+    print(f"\n{device_label(device)}")
+    print(f"Address:   {device.address}")
+    if device.address_type is not None:
+        print(f"Addr type: {device.address_type}")
+    if device.icon is not None:
+        print(f"Category:  {device.icon}")
+    if APPLE_COMPANY_ID in device.manufacturer_ids:
+        print("Maker:     Apple (advertised company ID)")
+    if device.rssi is not None:
+        print(f"Signal:    {signal_description(device.rssi)}")
+    print(f"Connected: {yes_no(device.connected)}")
+    print(f"Paired:    {yes_no(device.paired)}")
+    print(f"Bonded:    {yes_no(device.bonded)}")
+    print(f"Trusted:   {yes_no(device.trusted)}")
+    print(f"Blocked:   {yes_no(device.blocked)}")
+
+
+def device_for_choice(
+    choice: str,
+    devices: list[Device],
+) -> Device | None:
+    if not choice.isdecimal():
+        return None
+    index = int(choice) - 1
+    if index < 0 or index >= len(devices):
+        return None
+    return devices[index]
+
+
+def manage_device(
+    busctl: str,
+    bluetoothctl: str,
+    address: str,
+) -> None:
+    while True:
+        try:
+            adapter, devices = read_state(busctl)
+        except BluetoothError as error:
+            print(f"ERROR: {error}", file=sys.stderr)
+            return
+
+        device = find_device(devices, address)
+        if device is None:
+            print("That device is no longer available.")
+            return
+
+        show_device(device)
+        print("\nActions:")
+        if not adapter.powered:
+            print("  Bluetooth is powered off.")
+        elif not device.paired:
+            print("  [P] Pair, trust, and connect")
+        else:
+            if not device.trusted:
+                print("  [T] Trust and connect")
+            elif not device.connected:
+                print("  [C] Connect")
+            if device.connected:
+                print("  [D] Disconnect")
+                print("  Disconnect before removal.")
+            else:
+                print("  [X] Remove pairing")
+        print("  [B] Back")
+
+        action = input("\nChoose an action: ").strip().casefold()
+        if action == "b":
+            return
+
+        try:
+            if action == "p" and adapter.powered and not device.paired:
+                setup_device(busctl, bluetoothctl, device)
+            elif (
+                action == "t"
+                and adapter.powered
+                and device.paired
+                and not device.trusted
+            ):
+                setup_device(busctl, bluetoothctl, device)
+            elif (
+                action == "c"
+                and adapter.powered
+                and device.paired
+                and device.trusted
+                and not device.connected
+            ):
+                connect_device(busctl, bluetoothctl, device)
+            elif action == "d" and adapter.powered and device.connected:
+                disconnect_device(busctl, bluetoothctl, device)
+            elif (
+                action == "x"
+                and adapter.powered
+                and device.paired
+                and not device.connected
+            ):
+                expected = removal_phrase(device)
+                print("\nRemoval deletes the stored pairing and trust.")
+                print(f"Device:  {device.alias}")
+                print(f"Address: {device.address}")
+                confirmation = input(
+                    f"Type {expected} to confirm: "
+                ).strip()
+                if confirmation != expected:
+                    print("Removal canceled.")
+                else:
+                    remove_device(busctl, bluetoothctl, device)
+                    input("\nPress Enter to return to the device list.")
+                    return
+            else:
+                print("That action is not available for this state.")
+                continue
+        except BluetoothError as error:
+            print(f"ERROR: {error}", file=sys.stderr)
+            if action in ("p", "t", "c"):
+                print(
+                    "HINT: Wake the device or press its connect/pair "
+                    "button, then retry. The stored pairing was not removed."
+                )
+
+        input("\nPress Enter to refresh this device.")
+
+
+def toggle_power(
+    busctl: str,
+    bluetoothctl: str,
+    adapter: Adapter,
+    devices: list[Device],
+    scanner: Scanner,
+) -> None:
+    if scanner.active:
+        scanner.stop()
+        print("Bluetooth scan stopped.")
+
+    if adapter.powered:
+        connected = [device for device in devices if device.connected]
+        if connected:
+            print(
+                "\nPowering off will disconnect: "
+                + ", ".join(device.alias for device in connected)
+            )
+            if input("Type POWER OFF to confirm: ").strip() != "POWER OFF":
+                print("Power-off canceled.")
+                return
+
+    set_adapter_power(busctl, bluetoothctl, not adapter.powered)
+
+
+def toggle_scan(
+    busctl: str,
+    adapter: Adapter,
+    scanner: Scanner,
+) -> None:
+    if scanner.active:
+        scanner.stop()
+        print("Bluetooth scan stopped.")
+    elif not adapter.powered:
+        print("Bluetooth must be powered on before scanning.")
+    elif adapter.discovering:
+        print("A scan is already owned by another application.")
+    else:
+        scanner.start(adapter)
+        try:
+            wait_for_scan_ready(busctl)
+        except BluetoothError:
+            scanner.stop()
+            raise
+        print(
+            "Bluetooth scan started. Zenwolf is temporarily visible and "
+            "pairable. Use R to refresh, then choose a device here to pair."
+        )
+
+
+def run_interactive(busctl: str, bluetoothctl: str) -> int:
+    scanner = Scanner(bluetoothctl)
+    show_anonymous = False
+    try:
+        while True:
+            try:
+                adapter, devices = read_state(busctl)
+            except BluetoothError as error:
+                print(f"ERROR: {error}", file=sys.stderr)
+                return 1
+
+            print()
+            displayed = visible_devices(devices, show_anonymous)
+            anonymous_count = sum(
+                device_is_anonymous(device) for device in devices
+            )
+            show_status(
+                adapter,
+                devices,
+                show_anonymous=show_anonymous,
+            )
+            scan_action = "Stop scan" if scanner.active else "Start scan"
+            power_action = "Power off" if adapter.powered else "Power on"
+            anonymous_action = (
+                "Hide anonymous"
+                if show_anonymous
+                else f"Show anonymous ({anonymous_count})"
+            )
+            choice = input(
+                "\nSelect a device number, "
+                f"[S] {scan_action}, [P] {power_action}, "
+                f"[A] {anonymous_action}, [R] Refresh, [Q] Quit: "
+            ).strip()
+            action = choice.casefold()
+
+            if action == "q":
+                return 0
+            if action == "r":
+                continue
+            if action == "a":
+                show_anonymous = not show_anonymous
+                continue
+            if action == "p":
+                try:
+                    toggle_power(
+                        busctl, bluetoothctl, adapter, devices, scanner
+                    )
+                except BluetoothError as error:
+                    print(f"ERROR: {error}", file=sys.stderr)
+                continue
+            if action == "s":
+                try:
+                    toggle_scan(busctl, adapter, scanner)
+                except BluetoothError as error:
+                    print(f"ERROR: {error}", file=sys.stderr)
+                continue
+
+            device = device_for_choice(choice, displayed)
+            if device is None:
+                print(
+                    "Please enter a listed device number, S, P, A, R, or Q."
+                )
+                continue
+            if scanner.active:
+                scanner.stop()
+                print("Bluetooth scan stopped before device actions.")
+            manage_device(busctl, bluetoothctl, device.address)
+    finally:
+        scanner.stop()
+
+
+def acquire_instance_lock():
+    """Prevent competing managers while allowing status-only calls."""
+    runtime_root = os.environ.get("XDG_RUNTIME_DIR")
+    if not runtime_root:
+        runtime_root = tempfile.gettempdir()
+    path = os.path.join(
+        runtime_root,
+        f"zenwolf-bluetooth-{os.getuid()}.lock",
+    )
+    lock = open(path, "w", encoding="utf-8")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError as error:
+        lock.close()
+        raise BluetoothError(
+            "Another Zenwolf Bluetooth manager is already open."
+        ) from error
+    return lock
+
+
+def launch_waybar_manager() -> int:
+    """Open one manager window and silently ignore duplicate clicks."""
+    try:
+        lock = acquire_instance_lock()
+    except BluetoothError:
+        return 0
+
+    try:
+        ghostty = shutil.which(GHOSTTY_COMMAND)
+        if ghostty is None:
+            print(
+                f"ERROR: {GHOSTTY_COMMAND} is not installed or not in PATH.",
+                file=sys.stderr,
+            )
+            return 1
+
+        command = [
+            ghostty,
+            "--title=Zenwolf Bluetooth",
+            "-e",
+            os.path.realpath(__file__),
+            "--managed",
+        ]
+        try:
+            completed = subprocess.run(command, check=False)
+        except OSError as error:
+            print(f"ERROR: Could not open {GHOSTTY_COMMAND}: {error}")
+            return 1
+        return completed.returncode
+    finally:
+        lock.close()
+
+
+def main() -> int:
+    arguments = sys.argv[1:]
+    if arguments == ["--launch"]:
+        return launch_waybar_manager()
+    if arguments not in ([], ["--managed"]):
+        print(
+            "Usage: zenwolf-bluetooth [--launch]",
+            file=sys.stderr,
+        )
+        return 2
+
+    busctl = shutil.which(BUSCTL_COMMAND)
+    bluetoothctl = shutil.which(BLUETOOTHCTL_COMMAND)
+    for name, path in (
+        (BUSCTL_COMMAND, busctl),
+        (BLUETOOTHCTL_COMMAND, bluetoothctl),
+    ):
+        if path is None:
+            print(
+                f"ERROR: {name} is not installed or not in PATH.",
+                file=sys.stderr,
+            )
+            return 1
+
+    try:
+        adapter, devices = read_state(busctl)
+    except BluetoothError as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+
+    if not sys.stdin.isatty():
+        if arguments == ["--managed"]:
+            print("ERROR: Managed mode requires a terminal.", file=sys.stderr)
+            return 1
+        show_status(adapter, devices)
+        return 0
+
+    if arguments == ["--managed"]:
+        try:
+            return run_interactive(busctl, bluetoothctl)
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 0
+
+    try:
+        lock = acquire_instance_lock()
+    except BluetoothError as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+
+    try:
+        return run_interactive(busctl, bluetoothctl)
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return 0
+    finally:
+        lock.close()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
