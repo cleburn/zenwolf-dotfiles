@@ -14,7 +14,7 @@ entire setup.
 ## Start here
 
 - [`home/`](home/) maps the user configuration below your home directory.
-- [`games/`](games/) contains standalone Snake and Tetris games.
+- [`games/`](games/) contains five standalone Python games.
 - [`docs/build-guide.md`](docs/build-guide.md) explains how the pieces fit
   together and how to install them safely.
 - [`docs/cheatsheet.md`](docs/cheatsheet.md) collects the shortcuts and everyday
@@ -77,10 +77,13 @@ start-zenwolf-desktop
 
 ## Games
 
-The two small games can run independently of the desktop:
+The five small games can run independently of the desktop:
 
 ```bash
+python games/number_guessing_game.py
+python games/rock_paper_scissors.py
 python games/snake.py
+python games/tetris.py
 python games/tetris_pygame.py
 ```
 

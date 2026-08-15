@@ -24,3 +24,6 @@ home/.mozilla/
 
 # The included games create their shared high-score file beside the scripts.
 games/game_high_scores.json
+
+# Zenwolf also uses ~/games as its Steam library root. Never publish it.
+games/SteamLibrary/
