@@ -32,8 +32,8 @@ if /usr/bin/systemctl --user is-active --quiet "$unit"; then
     output='the current recording'
     [[ -r "$state_file" ]] && IFS= read -r output < "$state_file"
 
-    # The transient unit's KillSignal is SIGINT, which lets wf-recorder write
-    # the Matroska trailer before systemd considers the recording stopped.
+    # The transient unit's KillSignal is SIGINT, which lets wf-recorder finish
+    # the MP4 trailer before systemd considers the recording stopped.
     /usr/bin/systemctl --user stop "$unit"
     rm -f "$state_file"
     notify 'Screen recording saved' "$output"
@@ -65,7 +65,7 @@ readonly videos_dir
 readonly recording_dir="$videos_dir/recordings"
 
 install -d -m 755 "$recording_dir" "$state_dir"
-readonly output="$recording_dir/zenwolf-$(date '+%Y%m%d-%H%M%S').mkv"
+readonly output="$recording_dir/zenwolf-$(date '+%Y%m%d-%H%M%S').mp4"
 printf '%s\n' "$output" > "$state_file"
 
 # Do not pass --device here. wf-recorder 0.6.0 compares device path strings

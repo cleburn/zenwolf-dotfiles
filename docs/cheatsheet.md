@@ -120,7 +120,14 @@ xdg-user-dir VIDEOS
 ```
 
 Screenshots go below `pictures/screenshots`; recordings go below
-`videos/recordings` with the repository's lowercase XDG policy.
+`videos/recordings` with the repository's lowercase XDG policy. New recordings
+are H.264 MP4 files and open directly on macOS. Renaming an old MKV does not
+convert it; remux it without quality loss:
+
+```bash
+ffmpeg -i <INPUT_RECORDING>.mkv -map 0:v:0 -c:v copy -tag:v avc1 \
+  -movflags +faststart -an <OUTPUT_RECORDING>.mp4
+```
 
 ## Services and health
 
