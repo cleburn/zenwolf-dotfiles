@@ -92,6 +92,10 @@ python games/tetris_pygame.py
   <img src="assets/screenshots/05-snake-tetris-gameplay.png" width="49%" alt="Snake and Tetris gameplay">
 </p>
 
+<p align="center">
+  <img src="assets/screenshots/06-rock-paper-scissors-gameplay.png" width="99%" alt="Rock Paper Scissors gameplay">
+</p>
+
 ## Credits
 
 Zenwolf pulled ideas and inspiration from some really cool dotfile repos:
