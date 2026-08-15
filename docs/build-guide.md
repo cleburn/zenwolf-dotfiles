@@ -9,6 +9,12 @@ If you are new to Arch, keep the official [Arch installation guide][arch-install
 open beside this document. Follow it until you have a booting system, working
 network, non-root user, and `sudo`. Zenwolf starts there.
 
+Anything in `<ANGLE_BRACKETS>` is a placeholder. Replace the complete token
+with a value confirmed on your machine and do not type the brackets. Shell
+variables such as `$HOME` and `$PWD` are literal references and should be typed
+exactly as shown. Public files ending in `.example` use explicit `CHANGE_ME`
+sentinels inside the file; replace those exact sentinels before installation.
+
 ## Contents
 
 1. [Know what you are installing](#scope)
@@ -136,11 +142,11 @@ sudo chmod 644 /etc/zenwolf/hardware.conf
 Replace every `CHANGE_ME` value:
 
 - `ZENWOLF_SESSION_USER` is the output of `id -un`.
-- `ZENWOLF_DESKTOP_DRM` is the `...-card` path for the GPU that owns your
-  displays.
+- `ZENWOLF_DESKTOP_DRM` is the symlink ending in `-card` for the GPU that owns
+  your displays.
 - `ZENWOLF_NVIDIA_PCI_ID` is the domain-qualified NVIDIA address from `lspci
   -D`, without the `/sys/bus/pci/devices/` prefix.
-- `ZENWOLF_NVIDIA_RENDER` is its `...-render` path.
+- `ZENWOLF_NVIDIA_RENDER` is that NVIDIA device's symlink ending in `-render`.
 - `ZENWOLF_GAMING_PLATFORM_PROFILE` is a real value printed by
   `platform_profile_choices`.
 
@@ -236,16 +242,16 @@ zenwolf-theme-select
 Edit a theme in two layers:
 
 ```text
-~/.config/zenwolf/themes/<theme>/profile.json  palette and appearance
+~/.config/zenwolf/themes/<THEME>/profile.json  palette and appearance
 ~/.config/zenwolf/templates/                 consumer file structure
 ```
 
 Then regenerate and reapply:
 
 ```bash
-zenwolf-theme-build build <theme>
-zenwolf-theme-build check <theme>
-zenwolf-theme <theme>
+zenwolf-theme-build build <THEME>
+zenwolf-theme-build check <THEME>
+zenwolf-theme <THEME>
 ```
 
 <a id="desktop"></a>

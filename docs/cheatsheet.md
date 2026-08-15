@@ -3,6 +3,10 @@
 Daily controls first, configuration locations second. The [build
 guide](build-guide.md) has installation details and safety boundaries.
 
+Anything in `<ANGLE_BRACKETS>` is a placeholder. Replace the complete token
+with a confirmed value and do not type the brackets. Shell variables such as
+`$HOME` are literal references and should be typed exactly as shown.
+
 ## Desktop shortcuts
 
 | Shortcut | Action |
@@ -56,9 +60,9 @@ zenwolf-theme-build check
 After editing a profile or template:
 
 ```bash
-zenwolf-theme-build build THEME
-zenwolf-theme-build check THEME
-zenwolf-theme THEME
+zenwolf-theme-build build <THEME>
+zenwolf-theme-build check <THEME>
+zenwolf-theme <THEME>
 ```
 
 ## Where to change things
@@ -73,7 +77,7 @@ zenwolf-theme THEME
 | Rofi theme selector | `~/.config/rofi/zenwolf-theme-selector.rasi` |
 | Ghostty | `~/.config/ghostty/config` |
 | Fastfetch | `~/.config/fastfetch/config.jsonc` |
-| Theme palettes and appearance | `~/.config/zenwolf/themes/*/profile.json` |
+| Theme palettes and appearance | `~/.config/zenwolf/themes/<THEME>/profile.json` |
 | Shared theme templates | `~/.config/zenwolf/templates/` |
 | Active generated theme | `~/.config/zenwolf/current` |
 | Firefox startpage links | `~/.local/share/zenwolf/startpage/app.js` |
@@ -125,8 +129,8 @@ are H.264 MP4 files and open directly on macOS. Renaming an old MKV does not
 convert it; remux it without quality loss:
 
 ```bash
-ffmpeg -i <INPUT_RECORDING>.mkv -map 0:v:0 -c:v copy -tag:v avc1 \
-  -movflags +faststart -an <OUTPUT_RECORDING>.mp4
+ffmpeg -i '<INPUT_RECORDING>.mkv' -map 0:v:0 -c:v copy -tag:v avc1 \
+  -movflags +faststart -an '<OUTPUT_RECORDING>.mp4'
 ```
 
 ## Services and health
