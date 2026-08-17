@@ -11,6 +11,15 @@ export PATH="$HOME/.local/bin:$PATH"
 # If not running interactively, do not configure an interactive shell.
 [[ $- != *i* ]] && return
 
+# Keep persistent Bash history with other private application state. This also
+# contains any interrupted-write temporary files instead of cluttering $HOME.
+bash_history_dir="${XDG_STATE_HOME:-$HOME/.local/state}/bash"
+if [[ ! -d "$bash_history_dir" ]]; then
+    install -d -m 0700 "$bash_history_dir"
+fi
+export HISTFILE="$bash_history_dir/history"
+unset bash_history_dir
+
 alias ls='ls --color=auto'
 alias grep='grep --color=auto'
 
