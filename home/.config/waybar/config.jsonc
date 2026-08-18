@@ -120,6 +120,6 @@
   "tray": {
     "icon-size": 16,
     "spacing": 8,
-    "show-passive-items": false
+    "show-passive-items": true
   }
 }
