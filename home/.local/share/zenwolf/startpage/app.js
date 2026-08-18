@@ -5,17 +5,20 @@ const SECTIONS = [
   {
     label: "Daily",
     links: [
+      ["G", "Gemini", "https://gemini.google.com/app"],
+      ["CS", "WGU", "https://my.wgu.edu/home/"],
+      ["GH", "GitHub", "https://github.com/cleburn/"],
       ["YT", "YouTube", "https://www.youtube.com/"],
       ["X", "X", "https://x.com/"],
+      ["CO", "CyberSpace Online", "https://cyberspace.online/feed/"],
       ["RD", "Reddit", "https://www.reddit.com/"],
     ],
   },
   {
     label: "Zenwolf",
     links: [
-      ["BG", "Build guide", "docs/build-guide.html"],
+      ["HB", "Rebuild handbook", "docs/handbook.html"],
       ["CS", "Daily cheatsheet", "docs/cheatsheet.html"],
-      ["GH", "GitHub", "https://github.com/"],
       ["AW", "ArchWiki", "https://wiki.archlinux.org/"],
       ["HY", "Hyprland Wiki", "https://wiki.hypr.land/"],
     ],
