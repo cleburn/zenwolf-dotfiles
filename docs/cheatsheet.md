@@ -175,6 +175,12 @@ Start gaming mode from a TTY, exit Hyprland to tear it down, and verify the
 service becomes inactive. The [build guide's optional system
 section](build-guide.md#system) explains the boundary.
 
+The tracked Steam wrapper is Game-only and keeps its complete process tree on
+NVIDIA. Keep per-game GPU-routing options empty and keep **Steam → Settings →
+Downloads → Enable Shader Pre-Caching** off. After a relevant game, Proton, or
+driver update, let the first launch settle at its menu and exit cleanly once;
+later launches should reuse DXVK and NVIDIA's retained caches.
+
 ## First-line troubleshooting
 
 - **Theme drift:** run `zenwolf-theme-build check`, rebuild the named profile,

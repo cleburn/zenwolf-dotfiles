@@ -9,49 +9,39 @@ if [[ -r "$hardware_config" ]]; then
 fi
 
 readonly gaming_service='zenwolf-nvidia-gaming.service'
-readonly radeon_vulkan_icd="${ZENWOLF_RADEON_VULKAN_ICD:-/usr/share/vulkan/icd.d/radeon_icd.json}"
 readonly nvidia_vulkan_icd="${ZENWOLF_NVIDIA_VULKAN_ICD:-/usr/share/vulkan/icd.d/nvidia_icd.json}"
-readonly mesa_egl="${ZENWOLF_MESA_EGL:-/usr/share/glvnd/egl_vendor.d/50_mesa.json}"
+readonly nvidia_shader_cache_size="${ZENWOLF_NVIDIA_SHADER_CACHE_SIZE:-17179869184}"
 
 unset VK_ICD_FILENAMES
 
-if /usr/bin/systemctl is-active --quiet "$gaming_service"; then
-    if [[ ! -d /sys/module/nvidia_drm ]]; then
-        printf 'ERROR: NVIDIA gaming mode is active but nvidia_drm is not loaded.\n' >&2
-        exit 1
+if ! /usr/bin/systemctl is-active --quiet "$gaming_service"; then
+    message='Exit Zen, enter Game mode, then launch Steam again.'
+    if command -v notify-send >/dev/null 2>&1 \
+        && [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+        notify-send 'Steam requires Game mode' "$message"
     fi
-    if [[ ! -r "$nvidia_vulkan_icd" ]]; then
-        printf 'ERROR: NVIDIA Vulkan manifest is not readable: %s\n' \
-            "$nvidia_vulkan_icd" >&2
-        exit 1
-    fi
-
-    # In the deliberate gaming desktop, keep Steam, shader workers, Proton,
-    # and games on one NVIDIA boundary.
-    export VK_DRIVER_FILES="$nvidia_vulkan_icd"
-    unset __EGL_VENDOR_LIBRARY_FILENAMES
-    export __GLX_VENDOR_LIBRARY_NAME='nvidia'
-    export __NV_PRIME_RENDER_OFFLOAD='1'
-    export __VK_LAYER_NV_optimus='NVIDIA_only'
-else
-    if [[ ! -r "$radeon_vulkan_icd" ]]; then
-        printf 'ERROR: Radeon Vulkan manifest is not readable: %s\n' \
-            "$radeon_vulkan_icd" >&2
-        exit 1
-    fi
-    if [[ ! -r "$mesa_egl" ]]; then
-        printf 'ERROR: Mesa EGL vendor manifest is not readable: %s\n' \
-            "$mesa_egl" >&2
-        exit 1
-    fi
-
-    # In the ordinary desktop, keep the complete Steam tree on AMD so NVIDIA
-    # can remain runtime-suspended.
-    export VK_DRIVER_FILES="$radeon_vulkan_icd"
-    export __EGL_VENDOR_LIBRARY_FILENAMES="$mesa_egl"
-    export __GLX_VENDOR_LIBRARY_NAME='mesa'
-    unset __NV_PRIME_RENDER_OFFLOAD
-    unset __VK_LAYER_NV_optimus
+    printf 'ERROR: NVIDIA gaming mode is not active.\n%s\n' "$message" >&2
+    exit 1
 fi
+
+if [[ ! -d /sys/module/nvidia_drm ]]; then
+    printf 'ERROR: NVIDIA gaming mode is active but nvidia_drm is not loaded.\n' >&2
+    exit 1
+fi
+if [[ ! -r "$nvidia_vulkan_icd" ]]; then
+    printf 'ERROR: NVIDIA Vulkan manifest is not readable: %s\n' \
+        "$nvidia_vulkan_icd" >&2
+    exit 1
+fi
+
+# Keep the Steam client, shader caches, Proton, and games on one durable GPU
+# identity. The larger persistent driver cache reduces unnecessary pruning
+# while Steam's global Fossilize pre-cache remains disabled.
+export VK_DRIVER_FILES="$nvidia_vulkan_icd"
+unset __EGL_VENDOR_LIBRARY_FILENAMES
+export __GLX_VENDOR_LIBRARY_NAME='nvidia'
+export __NV_PRIME_RENDER_OFFLOAD='1'
+export __VK_LAYER_NV_optimus='NVIDIA_only'
+export __GL_SHADER_DISK_CACHE_SIZE="$nvidia_shader_cache_size"
 
 exec /usr/bin/steam "$@"
