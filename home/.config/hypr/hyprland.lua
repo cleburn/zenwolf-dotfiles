@@ -1,11 +1,28 @@
 -- Zenwolf first-session baseline.
 
-hl.monitor({
-    output = "",
-    mode = "preferred",
-    position = "auto",
-    scale = 1,
-})
+local external_output = os.getenv("ZENWOLF_EXTERNAL_OUTPUT")
+local internal_output = os.getenv("ZENWOLF_INTERNAL_OUTPUT") or "eDP-1"
+if external_output ~= nil and external_output ~= "" then
+    hl.monitor({
+        output = external_output,
+        mode = os.getenv("ZENWOLF_EXTERNAL_MODE") or "preferred",
+        position = "0x0",
+        scale = tonumber(os.getenv("ZENWOLF_EXTERNAL_SCALE")) or 1,
+        vrr = 0,
+        bitdepth = 8,
+    })
+    hl.monitor({
+        output = internal_output,
+        disabled = true,
+    })
+else
+    hl.monitor({
+        output = "",
+        mode = "preferred",
+        position = "auto",
+        scale = 1,
+    })
+end
 
 hl.config({
     input = {

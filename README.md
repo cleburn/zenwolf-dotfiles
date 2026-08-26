@@ -1,8 +1,9 @@
 # Zenwolf dotfiles
 
 Zenwolf is my keyboard-first Arch and Hyprland desktop. Nine coordinated
-themes, a visual wallpaper picker, floating and tiled workspaces, and a bunch
-of small quality-of-life details make the whole machine feel like one system.
+themes, a visual wallpaper picker, floating and tiled workspaces, a deliberate
+hybrid-GPU gaming lifecycle, and a bunch of small quality-of-life details make
+the whole machine feel like one system.
 
 Browse around and copy whatever you find useful. You do not need to adopt the
 entire setup.
@@ -35,7 +36,7 @@ desktop and included games:
 
 ```bash
 sudo pacman -Syu --needed \
-  bash git rsync python python-pygame jq ripgrep nano cmark-gfm pciutils \
+  bash git rsync python python-pygame jq ripgrep nano cmark-gfm pciutils edid-decode \
   hyprland hyprlock hyprpaper hyprpolkitagent \
   xdg-desktop-portal-hyprland xdg-desktop-portal-gtk \
   ghostty rofi waybar starship fastfetch \

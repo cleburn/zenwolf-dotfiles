@@ -10,8 +10,14 @@ fi
 
 readonly amd_drm="${ZENWOLF_DESKTOP_DRM:-}"
 readonly mesa_egl="${ZENWOLF_MESA_EGL:-/usr/share/glvnd/egl_vendor.d/50_mesa.json}"
+readonly nvidia_egl="${ZENWOLF_NVIDIA_EGL:-/usr/share/glvnd/egl_vendor.d/10_nvidia.json}"
+readonly internal_output="${ZENWOLF_INTERNAL_OUTPUT:-}"
 readonly runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$UID}"
 readonly session_mode="${ZENWOLF_SESSION_MODE:-zen}"
+readonly external_output="${ZENWOLF_EXTERNAL_OUTPUT:-}"
+readonly external_mode="${ZENWOLF_EXTERNAL_MODE:-}"
+readonly external_scale="${ZENWOLF_EXTERNAL_SCALE:-}"
+readonly nvidia_drm="${ZENWOLF_NVIDIA_DRM:-}"
 readonly transition_request="$runtime_dir/zenwolf-session.request"
 readonly gaming_launcher="$HOME/.local/bin/start-zenwolf-gaming"
 readonly -a portal_services=(
@@ -43,19 +49,80 @@ if [[ ! -c "$amd_drm" ]]; then
     exit 1
 fi
 
-if [[ ! -r "$mesa_egl" ]]; then
-    printf 'ERROR: Mesa EGL vendor manifest is not readable: %s\n' "$mesa_egl" >&2
-    exit 1
+if [[ -n "$external_output" ]]; then
+    if [[ "$session_mode" != 'game' ]]; then
+        printf 'ERROR: an external-only display is valid only in Game mode.\n' >&2
+        exit 1
+    fi
+    if [[ -z "$external_mode" || -z "$external_scale" || -z "$nvidia_drm" \
+        || -z "$internal_output" ]]; then
+        printf 'ERROR: the external-display launch context is incomplete.\n' >&2
+        exit 1
+    fi
+    if [[ ! -c "$nvidia_drm" ]]; then
+        printf 'ERROR: NVIDIA DRM path is not a character device: %s\n' \
+            "$nvidia_drm" >&2
+        exit 1
+    fi
+    if [[ ! -r "$nvidia_egl" ]]; then
+        printf 'ERROR: NVIDIA EGL vendor manifest is not readable: %s\n' \
+            "$nvidia_egl" >&2
+        exit 1
+    fi
+
+    export AQ_DRM_DEVICES="$nvidia_drm:$amd_drm"
+    export __EGL_VENDOR_LIBRARY_FILENAMES="$nvidia_egl"
+    export __GLX_VENDOR_LIBRARY_NAME='nvidia'
+    export ZENWOLF_EXTERNAL_OUTPUT="$external_output"
+    export ZENWOLF_EXTERNAL_MODE="$external_mode"
+    export ZENWOLF_EXTERNAL_SCALE="$external_scale"
+    export ZENWOLF_NVIDIA_DRM="$nvidia_drm"
+    export ZENWOLF_INTERNAL_OUTPUT="$internal_output"
+else
+    if [[ ! -r "$mesa_egl" ]]; then
+        printf 'ERROR: Mesa EGL vendor manifest is not readable: %s\n' \
+            "$mesa_egl" >&2
+        exit 1
+    fi
+
+    export AQ_DRM_DEVICES="$amd_drm"
+    export __EGL_VENDOR_LIBRARY_FILENAMES="$mesa_egl"
+    export __GLX_VENDOR_LIBRARY_NAME='mesa'
+    unset ZENWOLF_EXTERNAL_OUTPUT ZENWOLF_EXTERNAL_MODE \
+        ZENWOLF_EXTERNAL_SCALE ZENWOLF_NVIDIA_DRM ZENWOLF_INTERNAL_OUTPUT
 fi
 
-export AQ_DRM_DEVICES="$amd_drm"
-export __EGL_VENDOR_LIBRARY_FILENAMES="$mesa_egl"
-export __GLX_VENDOR_LIBRARY_NAME='mesa'
+# Hyprland launches compositor-bound programs through the user manager. Give
+# those services the same renderer selection as the compositor, and discard
+# stale external-display state when returning to the internal panel.
+systemctl --user unset-environment \
+    ZENWOLF_EXTERNAL_OUTPUT ZENWOLF_EXTERNAL_MODE \
+    ZENWOLF_EXTERNAL_SCALE ZENWOLF_NVIDIA_DRM ZENWOLF_INTERNAL_OUTPUT
+systemctl --user import-environment \
+    AQ_DRM_DEVICES __EGL_VENDOR_LIBRARY_FILENAMES __GLX_VENDOR_LIBRARY_NAME
+if [[ -n "$external_output" ]]; then
+    systemctl --user import-environment \
+        ZENWOLF_EXTERNAL_OUTPUT ZENWOLF_EXTERNAL_MODE \
+        ZENWOLF_EXTERNAL_SCALE ZENWOLF_NVIDIA_DRM ZENWOLF_INTERNAL_OUTPUT
+fi
 
 printf 'Starting Zenwolf desktop\n'
-printf '  DRM: %s -> %s\n' "$AQ_DRM_DEVICES" "$(readlink -e "$AQ_DRM_DEVICES")"
+printf '  DRM: %s\n' "$AQ_DRM_DEVICES"
+if [[ -n "$external_output" ]]; then
+    printf '  Primary DRM: %s -> %s\n' \
+        "$nvidia_drm" "$(readlink -e "$nvidia_drm")"
+else
+    printf '  Primary DRM: %s -> %s\n' \
+        "$amd_drm" "$(readlink -e "$amd_drm")"
+fi
 printf '  EGL: %s\n' "$__EGL_VENDOR_LIBRARY_FILENAMES"
 printf '  GLX: %s\n' "$__GLX_VENDOR_LIBRARY_NAME"
+if [[ -n "$external_output" ]]; then
+    printf '  Display: %s at %s (scale %s, %s disabled)\n' \
+        "$external_output" "$external_mode" "$external_scale" "$internal_output"
+else
+    printf '  Display: configured desktop output at preferred mode\n'
+fi
 
 restart_portals_when_ready() {
     local attempt current_desktop hyprland_signature manager_environment

@@ -68,9 +68,18 @@ install -d -m 755 "$recording_dir" "$state_dir"
 readonly output="$recording_dir/zenwolf-$(date '+%Y%m%d-%H%M%S').mp4"
 printf '%s\n' "$output" > "$state_file"
 
+declare -a encoder_options=(--codec h264_vaapi)
+if [[ -n "${ZENWOLF_EXTERNAL_OUTPUT:-}" ]]; then
+    # An external-only Game session is rendered by NVIDIA. Capture through a
+    # software frame so NVENC can upload it reliably instead of handing the
+    # encoder an AMD-oriented VA-API/DMA-BUF path.
+    encoder_options=(--codec h264_nvenc --no-dmabuf)
+fi
+readonly -a encoder_options
+
 # Do not pass --device here. wf-recorder 0.6.0 compares device path strings
-# literally; allowing it to adopt Hyprland's compositor-reported AMD render
-# path preserves the validated zero-copy DMA-BUF path.
+# literally. The internal path retains the validated AMD zero-copy DMA-BUF
+# route, while the external path explicitly selects NVIDIA's NVENC encoder.
 if ! /usr/bin/systemd-run \
     --user \
     --quiet \
@@ -84,7 +93,7 @@ if ! /usr/bin/systemd-run \
     /usr/bin/wf-recorder \
         "${capture_scope[@]}" \
         --file "$output" \
-        --codec h264_vaapi \
+        "${encoder_options[@]}" \
         --overwrite; then
     rm -f "$state_file"
     notify 'Screen recording failed' 'The recorder service could not start.'

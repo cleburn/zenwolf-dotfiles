@@ -7,6 +7,7 @@ readonly desktop_launcher="$HOME/.local/bin/start-zenwolf-desktop"
 readonly systemctl='/usr/bin/systemctl'
 readonly runtime_root="${XDG_RUNTIME_DIR:-/run/user/$UID}"
 readonly transition_request="$runtime_root/zenwolf-session.request"
+readonly nvidia_runtime_drm="$runtime_root/zenwolf-nvidia-dgpu"
 
 if [[ ! -x "$desktop_launcher" ]]; then
     printf 'ERROR: desktop launcher is not executable: %s\n' "$desktop_launcher" >&2
@@ -37,6 +38,10 @@ fi
 
 gaming_started='0'
 
+remove_runtime_drm() {
+    rm -f "$nvidia_runtime_drm"
+}
+
 stop_gaming_mode() {
     if [[ "$gaming_started" == '1' ]]; then
         printf 'Stopping Zenwolf gaming mode...\n'
@@ -53,6 +58,7 @@ cleanup() {
     status=$?
     trap - EXIT
 
+    remove_runtime_drm
     stop_gaming_mode || status=1
     exit "$status"
 }
@@ -71,11 +77,90 @@ if ! "$systemctl" is-active --quiet "$gaming_service"; then
     exit 1
 fi
 
-printf 'Gaming mode active; starting the AMD-owned desktop.\n'
+shopt -s nullglob
+declare -a nvidia_cards=()
+for card_path in /dev/dri/by-path/pci-*-card; do
+    card_device="$(readlink -e "$card_path")"
+    [[ -n "$card_device" ]] || continue
+    card_name="${card_device##*/}"
+    [[ -r "/sys/class/drm/$card_name/device/vendor" ]] || continue
+    [[ "$(<"/sys/class/drm/$card_name/device/vendor")" == '0x10de' ]] || continue
+    nvidia_cards+=("$card_path")
+done
+
+if ((${#nvidia_cards[@]} != 1)); then
+    printf 'ERROR: expected exactly one NVIDIA DRM card; found %d.\n' \
+        "${#nvidia_cards[@]}" >&2
+    exit 1
+fi
+
+readonly nvidia_card="${nvidia_cards[0]}"
+readonly nvidia_card_device="$(readlink -e "$nvidia_card")"
+readonly nvidia_card_name="${nvidia_card_device##*/}"
+declare -a external_connectors=()
+for connector in "/sys/class/drm/$nvidia_card_name"-HDMI-A-* \
+    "/sys/class/drm/$nvidia_card_name"-DP-*; do
+    [[ -r "$connector/status" ]] || continue
+    [[ "$(<"$connector/status")" == 'connected' ]] || continue
+    # sysfs attributes commonly report a nominal size of zero even when a
+    # read returns data. Decode the EDID instead of applying a regular-file
+    # size test to this kernel-provided pseudo-file.
+    /usr/bin/edid-decode "$connector/edid" >/dev/null 2>&1 || continue
+    external_connectors+=("$connector")
+done
+
+declare -a desktop_environment=(ZENWOLF_SESSION_MODE='game')
+if ((${#external_connectors[@]} > 1)); then
+    printf 'ERROR: multiple NVIDIA-wired external displays are connected.\n' >&2
+    printf 'Disconnect all but one display, then run gamer again.\n' >&2
+    exit 1
+elif ((${#external_connectors[@]} == 1)); then
+    readonly external_connector="${external_connectors[0]}"
+    readonly external_output="${external_connector##*/$nvidia_card_name-}"
+    product_name="$(
+        /usr/bin/edid-decode "$external_connector/edid" 2>/dev/null \
+            | sed -n "s/^[[:space:]]*Display Product Name: '\\(.*\\)'$/\\1/p" \
+            | head -n 1
+    )"
+    external_mode='preferred'
+    external_scale='1'
+
+    # The RD280U advertises its 3840x2560 native timing at only 50 Hz over
+    # HDMI. Prefer its supported 3840x2160 60 Hz timing for lower game latency;
+    # the monitor's Aspect display mode preserves geometry on its 3:2 panel.
+    if [[ "$product_name" == 'BenQ RD280U' ]]; then
+        if ! grep -Fxq '3840x2160' "$external_connector/modes"; then
+            printf 'ERROR: the BenQ 3840x2160 HDMI mode is not available.\n' >&2
+            exit 1
+        fi
+        external_mode='3840x2160@60'
+    fi
+
+    remove_runtime_drm
+    ln -s "$nvidia_card" "$nvidia_runtime_drm"
+    if [[ ! -c "$nvidia_runtime_drm" ]]; then
+        printf 'ERROR: failed to create the runtime NVIDIA DRM alias.\n' >&2
+        exit 1
+    fi
+
+    desktop_environment+=(
+        "ZENWOLF_EXTERNAL_OUTPUT=$external_output"
+        "ZENWOLF_EXTERNAL_MODE=$external_mode"
+        "ZENWOLF_EXTERNAL_SCALE=$external_scale"
+        "ZENWOLF_NVIDIA_DRM=$nvidia_runtime_drm"
+    )
+    printf 'External display: %s (%s), %s, scale %s.\n' \
+        "$external_output" "${product_name:-unknown model}" \
+        "$external_mode" "$external_scale"
+    printf 'Gaming mode active; starting the NVIDIA-owned external desktop.\n'
+else
+    printf 'No NVIDIA-wired external display detected.\n'
+    printf 'Gaming mode active; starting the AMD-owned internal desktop.\n'
+fi
 printf 'Exit Hyprland to end gaming mode and restore the ordinary GPU policy.\n'
 
 desktop_status='0'
-ZENWOLF_SESSION_MODE='game' "$desktop_launcher" "$@" || desktop_status=$?
+env "${desktop_environment[@]}" "$desktop_launcher" "$@" || desktop_status=$?
 
 if [[ "$desktop_status" == '0' && -r "$transition_request" ]]; then
     IFS= read -r requested_session <"$transition_request" || true
@@ -85,6 +170,7 @@ if [[ "$desktop_status" == '0' && -r "$transition_request" ]]; then
         if ! stop_gaming_mode; then
             exit 1
         fi
+        remove_runtime_drm
         trap - EXIT
         printf 'Switching from Game to Zen...\n'
         exec "$desktop_launcher"

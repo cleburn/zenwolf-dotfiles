@@ -175,6 +175,14 @@ Start gaming mode from a TTY, exit Hyprland to tear it down, and verify the
 service becomes inactive. The [build guide's optional system
 section](build-guide.md#system) explains the boundary.
 
+Connect and power exactly one external HDMI/DP display before `gamer`. A
+qualified NVIDIA-wired external becomes the sole Game output and disables the
+laptop panel; with none connected, Game retains the internal display. Restart
+Game after connecting or disconnecting a display. On a BenQ RD280U over HDMI,
+use **Display → Display Mode → Aspect** for an undistorted 3840×2160/60 Hz
+image with top and bottom letterboxing. Confirm the active/disabled outputs
+with `hyprctl monitors all`.
+
 The tracked Steam wrapper is Game-only and keeps its complete process tree on
 NVIDIA. Keep per-game GPU-routing options empty and keep **Steam → Settings →
 Downloads → Enable Shader Pre-Caching** off. After a relevant game, Proton, or

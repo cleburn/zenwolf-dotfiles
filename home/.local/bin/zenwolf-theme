@@ -166,13 +166,30 @@ hyprctl_zenwolf() {
 }
 
 apply_wallpaper() {
-    local attempt
+    local applied attempt monitor
+    local -a monitors=()
 
     systemctl --user start zenwolf-hyprpaper.service
 
     for attempt in {1..20}; do
-        if hyprctl_zenwolf hyprpaper wallpaper \
-            ",$wallpaper,cover" >/dev/null 2>&1; then
+        mapfile -t monitors < <(
+            hyprctl_zenwolf monitors -j 2>/dev/null \
+                | /usr/bin/jq -r '.[].name' 2>/dev/null
+        )
+        ((${#monitors[@]} > 0)) || {
+            sleep 0.1
+            continue
+        }
+
+        applied='1'
+        for monitor in "${monitors[@]}"; do
+            if ! hyprctl_zenwolf hyprpaper wallpaper \
+                "$monitor,$wallpaper,cover" >/dev/null 2>&1; then
+                applied='0'
+                break
+            fi
+        done
+        if [[ "$applied" == '1' ]]; then
             return 0
         fi
         sleep 0.1

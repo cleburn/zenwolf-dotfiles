@@ -67,7 +67,7 @@ Update first, then install the desktop, utilities, and included games:
 
 ```bash
 sudo pacman -Syu --needed \
-  bash git rsync python python-pygame jq ripgrep nano cmark-gfm pciutils \
+  bash git rsync python python-pygame jq ripgrep nano cmark-gfm pciutils edid-decode \
   hyprland hyprlock hyprpaper hyprpolkitagent \
   xdg-desktop-portal-hyprland xdg-desktop-portal-gtk \
   ghostty rofi waybar starship fastfetch \
@@ -144,6 +144,8 @@ Replace every `CHANGE_ME` value:
 - `ZENWOLF_SESSION_USER` is the output of `id -un`.
 - `ZENWOLF_DESKTOP_DRM` is the symlink ending in `-card` for the GPU that owns
   your displays.
+- `ZENWOLF_INTERNAL_OUTPUT` is the internal connector name Hyprland must
+  disable during an external-only Game session, such as `eDP-1`.
 - `ZENWOLF_NVIDIA_PCI_ID` is the domain-qualified NVIDIA address from `lspci
   -D`, without the `/sys/bus/pci/devices/` prefix.
 - `ZENWOLF_NVIDIA_RENDER` is that NVIDIA device's symlink ending in `-render`.
@@ -279,6 +281,14 @@ The monitor rule is deliberately generic. If you need a fixed mode, scale,
 position, or multiple-monitor layout, edit the first `hl.monitor()` call in
 `~/.config/hypr/hyprland.lua` after checking `hyprctl monitors`.
 
+Zenwolf's supplied hybrid-GPU launchers add a narrower optional policy. With no
+external display, Game retains the internal display GPU. If exactly one
+NVIDIA-wired HDMI/DP display with a valid EDID is connected before `gamer`
+starts, NVIDIA becomes Hyprland's primary renderer, the external becomes the
+sole enabled output, and the laptop panel is disabled. More than one external
+is refused rather than selected ambiguously. Adapt this hardware-specific
+behavior before using it on a different hybrid laptop.
+
 <a id="integrations"></a>
 
 ## 8. Add application integrations
@@ -380,6 +390,15 @@ sudo systemctl stop zenwolf-nvidia-gaming.service
 ```
 
 Both transitions must succeed before using `gamer`.
+
+The Game launcher discovers external displays only at startup. Connect and
+power exactly one NVIDIA-wired display before running `gamer`; restart Game
+after connecting or disconnecting it. Generic displays use their preferred
+EDID mode at scale 1. The included BenQ RD280U HDMI override selects
+3840×2160/60 Hz; set that monitor's **Display → Display Mode → Aspect** to
+letterbox the 16:9 image on its 3:2 panel without stretching. External NVIDIA
+sessions use NVENC for `zenwolf-record`, while internal AMD sessions retain
+VA-API.
 
 ### Locked-resume helper
 
