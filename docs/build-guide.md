@@ -71,7 +71,7 @@ sudo pacman -Syu --needed \
   hyprland hyprlock hyprpaper hyprpolkitagent \
   xdg-desktop-portal-hyprland xdg-desktop-portal-gtk \
   ghostty rofi waybar starship fastfetch \
-  pipewire pipewire-audio pipewire-alsa pipewire-pulse wireplumber \
+  pipewire pipewire-audio pipewire-alsa pipewire-pulse wireplumber pavucontrol \
   brightnessctl playerctl bluez bluez-utils \
   grim slurp satty wf-recorder wl-clipboard libnotify \
   thunar tumbler ffmpegthumbnailer gvfs file-roller \
@@ -87,6 +87,10 @@ Useful optional applications:
 ```bash
 sudo pacman -S --needed neovim steam
 ```
+
+`pavucontrol` works through `pipewire-pulse` and provides per-application
+volume, mute, device routing, and profile controls. Start playback before
+opening **Volume Control** so the application stream is visible.
 
 Steam requires Arch's multilib repository. NVIDIA gaming requires the driver
 appropriate for your GPU and kernel; do not copy another machine's driver or

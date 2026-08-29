@@ -133,6 +133,19 @@ ffmpeg -i '<INPUT_RECORDING>.mkv' -map 0:v:0 -c:v copy -tag:v avc1 \
   -movflags +faststart -an '<OUTPUT_RECORDING>.mp4'
 ```
 
+## Audio
+
+```bash
+wpctl status -n
+wpctl get-volume @DEFAULT_AUDIO_SINK@
+pavucontrol
+```
+
+Start playback before opening **Volume Control** so the application appears on
+the **Playback** tab. Adjust its volume, mute state, or destination there.
+WirePlumber's `~/.local/state/wireplumber/stream-properties` is generated state
+and should not be tracked or edited as the routine control surface.
+
 ## Services and health
 
 ```bash

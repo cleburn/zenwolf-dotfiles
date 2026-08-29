@@ -40,7 +40,7 @@ sudo pacman -Syu --needed \
   hyprland hyprlock hyprpaper hyprpolkitagent \
   xdg-desktop-portal-hyprland xdg-desktop-portal-gtk \
   ghostty rofi waybar starship fastfetch \
-  pipewire pipewire-audio pipewire-alsa pipewire-pulse wireplumber \
+  pipewire pipewire-audio pipewire-alsa pipewire-pulse wireplumber pavucontrol \
   brightnessctl playerctl bluez bluez-utils \
   grim slurp satty wf-recorder wl-clipboard libnotify \
   thunar tumbler ffmpegthumbnailer gvfs file-roller \
