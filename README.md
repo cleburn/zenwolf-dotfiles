@@ -2,10 +2,9 @@
 
 Zenwolf is my keyboard-first Arch and Hyprland desktop. Nine coordinated
 themes, a visual wallpaper picker, floating and tiled workspaces, a deliberate
-hybrid-GPU gaming lifecycle, and a bunch of small quality-of-life details make
-the whole machine feel like one system.
+hybrid-GPU gaming lifecycle, and a bunch of small quality-of-life details.
 
-Browse around and copy whatever you find useful. You do not need to adopt the
+Browse around and copy whatever you find useful. You don't need to adopt the
 entire setup.
 
 ![Zenwolf desktop with the Avatar Aang Dark theme](assets/screenshots/01-avatar-aang-dark-desktop.png)
@@ -24,7 +23,7 @@ entire setup.
 If you want the complete desktop, begin with a working Arch installation and
 follow the build guide in order. Zenwolf's hardware layer was built for an AMD
 display GPU with an optional NVIDIA GPU, so adapt that section rather than
-copying another machine's identifiers. If you only want a theme, script, or
+copying my machine's identifiers. If you only want a theme, script, or
 Rofi layout, take that piece and make it yours.
 
 ![Swordsman theme with the Rofi application launcher](assets/screenshots/02-swordsman-rofi-launcher.png)
