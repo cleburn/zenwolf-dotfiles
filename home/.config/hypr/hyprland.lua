@@ -27,6 +27,7 @@ end
 hl.config({
     input = {
         kb_layout = "us",
+        kb_variant = "mac",
         repeat_rate = 30,
         repeat_delay = 350,
         -- Permit focus to return to ordinary windows if a hidden-storage
