@@ -1,0 +1,4 @@
+# Optional workaround for affected NVIDIA hybrid laptops. Read the build guide.
+# Fine-grained RTD3 remains enabled, while VRAM stays in self-refresh rather
+# than being powered fully off during idle transitions.
+options nvidia NVreg_DynamicPowerManagement=0x02 NVreg_DynamicPowerManagementVideoMemoryThreshold=0

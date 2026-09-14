@@ -395,6 +395,52 @@ sudo systemctl stop zenwolf-nvidia-gaming.service
 
 Both transitions must succeed before using `gamer`.
 
+#### Optional RTD3 compatibility policy
+
+Do not install this policy merely because a system has NVIDIA graphics. It is
+included for affected hybrid laptops where an idle NVIDIA GPU repeatedly wakes
+from D3cold after its first activation. Zenwolf's Lenovo 16AHP9 with Ryzen
+8845HS and an RTX 4060 Laptop GPU exhibited the same behavior described in
+[NVIDIA issue 905][nvidia-issue-905].
+
+After reproducing that specific failure without a userspace GPU client, inspect
+the examples and install them together:
+
+```bash
+sudo install -d -m 755 /etc/modprobe.d /etc/udev/rules.d
+sudo install -m 644 \
+  system/etc/modprobe.d/90-zenwolf-nvidia-rtd3-workaround.conf.example \
+  /etc/modprobe.d/90-zenwolf-nvidia-rtd3-workaround.conf
+sudo install -m 644 \
+  system/etc/udev/rules.d/80-zenwolf-nvidia-rtd3.rules.example \
+  /etc/udev/rules.d/80-zenwolf-nvidia-rtd3.rules
+sudo udevadm control --reload
+sudo reboot
+```
+
+The module policy explicitly selects NVIDIA's fine-grained RTD3 mode and keeps
+VRAM in low-power self-refresh. This can use slightly more idle memory power
+than turning VRAM completely off, but reduces transition latency and avoids the
+observed wake cycle. The bind rule is required: without it, explicit `0x02` can
+leave the GPU's `power/control` set to `on`. NVIDIA documents both the RTD3 mode
+and the zero-threshold behavior in its [RTD3 guide][nvidia-rtd3].
+
+After rebooting, deliberately use NVIDIA once, close every client, wait for a
+quiet interval, and validate without using `nvidia-smi` as the idle probe:
+
+```bash
+cat /sys/module/nvidia/parameters/NVreg_DynamicPowerManagement
+cat /sys/module/nvidia/parameters/NVreg_DynamicPowerManagementVideoMemoryThreshold
+cat /sys/bus/pci/devices/<NVIDIA_PCI_ID>/power/control
+cat /sys/bus/pci/devices/<NVIDIA_PCI_ID>/power/runtime_status
+cat /sys/bus/pci/devices/<NVIDIA_PCI_ID>/power_state
+```
+
+Expected values are `2`, `0`, `auto`, `suspended`, and `D3cold`. Keep the policy
+through routine driver updates. If a future release fixes the platform issue,
+remove both files only for a controlled reboot-and-retest; restore them if the
+wake cycle returns.
+
 The Game launcher discovers external displays only at startup. Connect and
 power exactly one NVIDIA-wired display before running `gamer`; restart Game
 after connecting or disconnecting it. Generic displays use their preferred
@@ -513,3 +559,5 @@ against your home directory or `/`.
 [pywalfox]: https://github.com/Frewacom/pywalfox
 [spicetify]: https://spicetify.app/docs/getting-started
 [unimatrix]: https://github.com/will8211/unimatrix
+[nvidia-rtd3]: https://download.nvidia.com/XFree86/Linux-x86_64/610.43.03/README/dynamicpowermanagement.html
+[nvidia-issue-905]: https://github.com/NVIDIA/open-gpu-kernel-modules/issues/905
