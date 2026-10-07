@@ -3,9 +3,14 @@
 """Manage Zenwolf's Bluetooth devices from the terminal and Waybar."""
 
 from dataclasses import dataclass
+import codecs
 import fcntl
 import json
+import logging
+from logging.handlers import RotatingFileHandler
 import os
+import re
+import selectors
 import shutil
 import subprocess
 import sys
@@ -31,10 +36,196 @@ PAIR_TIMEOUT_SECONDS = 90
 CHECK_INTERVAL_SECONDS = 0.2
 
 APPLE_COMPANY_ID = 0x004C
+LOGGER = logging.getLogger("zenwolf.bluetooth")
+LOGGER.addHandler(logging.NullHandler())
 
 
 class BluetoothError(Exception):
     """Report an expected Bluetooth application failure."""
+
+
+class DeviceSession:
+    """Keep BlueZ's agent alive while the app sets up one selected device.
+
+    BlueZ 5.87 skips agent registration for command-line actions, even with
+    --agent. Start its interactive command engine behind the app instead, wait
+    for registration, and send each action only after the previous one finishes.
+    """
+
+    ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+    FAILURE = re.compile(
+        r"(?:Failed to [^\n]+|No default controller available|"
+        r"Device [0-9A-Fa-f:]+ not available|Agent released)"
+    )
+    PROMPT = re.compile(
+        r"Confirm passkey (\d{6}) \(yes/no\):|"
+        r"Accept pairing \(yes/no\):|"
+        r"Authorize service ([0-9A-Fa-f-]+) \(yes/no\):|"
+        r"Enter PIN code:|Enter passkey \(number in 0-999999\):|"
+        r"\[agent\] (?:PIN code: (\S+)|Passkey: (\d{6}))(?=\n)"
+    )
+
+    def __init__(self, bluetoothctl: str, device: "Device") -> None:
+        self.bluetoothctl = bluetoothctl
+        self.device = device
+        self.process: subprocess.Popen | None = None
+        self.pairing = False
+
+    def __enter__(self):
+        try:
+            self.process = subprocess.Popen(
+                [self.bluetoothctl, "--agent", "KeyboardDisplay"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                env={**os.environ, "LC_ALL": "C", "TERM": "dumb"},
+            )
+            self._wait("Agent registered", COMMAND_TIMEOUT_SECONDS)
+        except OSError as error:
+            self.close()
+            raise BluetoothError(f"Could not start Bluetooth authentication: {error}") from error
+        except BaseException:
+            self.close()
+            raise
+        return self
+
+    def __exit__(self, *_exception):
+        self.close()
+
+    def send(self, command: str) -> None:
+        if self.process is None or self.process.stdin is None:
+            raise BluetoothError("Bluetooth authentication is not running.")
+        try:
+            self.process.stdin.write((command + "\n").encode())
+            self.process.stdin.flush()
+        except (BrokenPipeError, OSError) as error:
+            raise BluetoothError("Bluetooth authentication stopped unexpectedly.") from error
+
+    def command(self, command: str, success: str, timeout: int = ACTION_TIMEOUT_SECONDS) -> None:
+        self.send(command)
+        self._wait(success, timeout)
+
+    def _wait(self, success: str, timeout: int) -> None:
+        assert self.process is not None and self.process.stdout is not None
+        deadline = time.monotonic() + timeout
+        decoder = codecs.getincrementaldecoder("utf-8")("replace")
+        output = ""
+        handled = 0
+        seen_prompts = set()
+        pending = None
+        with selectors.SelectSelector() as selector:
+            selector.register(self.process.stdout, selectors.EVENT_READ, "bluetooth")
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise BluetoothError(f"Bluetooth action timed out after {timeout} seconds.")
+                for key, _mask in selector.select(min(remaining, CHECK_INTERVAL_SECONDS)):
+                    if key.data == "answer":
+                        # Read only the requested line; leave later menu input alone.
+                        char = os.read(sys.stdin.fileno(), 1)
+                        if not char:
+                            raise BluetoothError("Bluetooth authentication canceled: input closed.")
+                        pending[1] += char.decode("utf-8", "replace")
+                        if char != b"\n":
+                            continue
+                        answer = pending[1].strip()
+                        kind = pending[0]
+                        if kind == "confirm":
+                            answer = {"y": "yes", "n": "no"}.get(answer.casefold(), answer.casefold())
+                            valid = answer in ("yes", "no")
+                        elif kind == "passkey":
+                            valid = answer.isascii() and answer.isdecimal() and len(answer) <= 6
+                        else:
+                            valid = 1 <= len(answer) <= 16 and "\r" not in answer
+                        if not valid:
+                            pending[1] = ""
+                            print("Invalid response. " + pending[2], end="", flush=True)
+                            continue
+                        self.send(answer)
+                        selector.unregister(sys.stdin.fileno())
+                        pending = None
+                        continue
+
+                    chunk = os.read(self.process.stdout.fileno(), 4096)
+                    if not chunk:
+                        raise BluetoothError("Bluetooth authentication stopped unexpectedly.")
+                    output += decoder.decode(chunk)
+                    # Readline emits colors and redraws, including prompts without
+                    # newlines. Parse the full accumulated output for split prompts.
+                    plain = self.ANSI.sub("", output).replace("\r", "\n")
+                    failure = self.FAILURE.search(plain)
+                    if failure:
+                        raise BluetoothError(failure.group(0).strip())
+                    for prompt in self.PROMPT.finditer(plain, handled):
+                        handled = prompt.end()
+                        text = prompt.group(0)
+                        if text in seen_prompts:
+                            continue
+                        seen_prompts.add(text)
+                        if text.startswith("[agent]"):
+                            code = prompt.group(3) or prompt.group(4)
+                            print(f"On {self.device.alias}, enter {code}, then press Enter.", flush=True)
+                            continue
+                        if text.startswith(("Accept pairing", "Authorize service")):
+                            # This agent belongs to the client initiating the
+                            # selected device's setup; it is never made default.
+                            self.send("yes")
+                            continue
+                        if pending is not None:
+                            raise BluetoothError("Bluetooth requested overlapping authentication prompts.")
+                        if text.startswith("Confirm passkey"):
+                            kind = "confirm"
+                            message = f"Does {self.device.alias} show {prompt.group(1)}? [yes/no]: "
+                        elif text.startswith("Enter passkey"):
+                            kind = "passkey"
+                            message = f"Enter the six-digit passkey for {self.device.alias}: "
+                        else:
+                            kind = "pin"
+                            message = f"Enter the PIN for {self.device.alias}: "
+                        print(message, end="", flush=True)
+                        pending = [kind, "", message]
+                        try:
+                            selector.register(sys.stdin.fileno(), selectors.EVENT_READ, "answer")
+                        except (AttributeError, OSError, ValueError) as error:
+                            raise BluetoothError("Bluetooth authentication needs an interactive terminal.") from error
+                    if success in plain:
+                        return
+
+    def close(self) -> None:
+        process = self.process
+        if process is None:
+            return
+        try:
+            if process.poll() is None:
+                if self.pairing:
+                    try:
+                        # Cancel through a separate client: this one's stdin
+                        # may currently be waiting for a PIN or confirmation.
+                        run_bluetooth_command(
+                            self.bluetoothctl,
+                            ["cancel-pairing", self.device.address],
+                            timeout=PROCESS_STOP_TIMEOUT_SECONDS,
+                        )
+                    except BluetoothError:
+                        pass
+                try:
+                    self.send("quit")
+                except BluetoothError:
+                    pass
+                try:
+                    process.wait(timeout=PROCESS_STOP_TIMEOUT_SECONDS)
+                except subprocess.TimeoutExpired:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=PROCESS_STOP_TIMEOUT_SECONDS)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+        finally:
+            for pipe in (process.stdin, process.stdout):
+                if pipe is not None:
+                    pipe.close()
+            self.process = None
 
 
 class Scanner:
@@ -116,6 +307,9 @@ class Scanner:
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait()
+        finally:
+            if process.stdin is not None:
+                process.stdin.close()
 
 
 @dataclass(frozen=True)
@@ -419,21 +613,18 @@ def run_bluetooth_command(
     bluetoothctl: str,
     arguments: list[str],
     *,
-    interactive: bool = False,
-    agent: bool = False,
     timeout: int = ACTION_TIMEOUT_SECONDS,
 ) -> None:
     """Run one bluetoothctl command without a shell."""
-    command = [bluetoothctl]
-    if agent:
-        command.extend(["--agent", "KeyboardDisplay"])
-    command.extend(arguments)
+    # --timeout keeps bluetoothctl alive until that timer expires even when
+    # the action succeeds. subprocess.run already bounds the command lifetime.
+    command = [bluetoothctl, *arguments]
 
     try:
         completed = subprocess.run(
             command,
             check=False,
-            capture_output=not interactive,
+            capture_output=True,
             text=True,
             timeout=timeout + PROCESS_STOP_TIMEOUT_SECONDS,
         )
@@ -478,34 +669,66 @@ def setup_device(
     device: Device,
 ) -> None:
     """Pair if needed, then trust and connect a device."""
-    current = device
-    if not current.paired:
-        print("\nFollow any BlueZ passkey or confirmation prompt below.")
-        run_bluetooth_command(
-            bluetoothctl,
-            ["pair", current.address],
-            interactive=True,
-            agent=True,
-            timeout=PAIR_TIMEOUT_SECONDS,
-        )
-        current = wait_for_device_property(
-            busctl, current.address, "paired", True
-        )
-        print(f"Paired {current.alias}.")
+    adapter, devices = read_state(busctl)
+    current = find_device(devices, device.address)
+    if current is None:
+        raise BluetoothError("That device is no longer available. Scan again and retry.")
+    if current.blocked:
+        raise BluetoothError("This device is blocked. Unblock it before connecting.")
+    if not adapter.powered:
+        raise BluetoothError("Bluetooth must be powered on before pairing.")
+    phase = "authentication"
+    LOGGER.info("Setup started: %s (%s)", current.alias, current.address)
+    try:
+        with DeviceSession(bluetoothctl, current) as session:
+            if not current.paired:
+                phase = "pairing"
+                print(f"\nPairing {current.alias}…", flush=True)
+                session.command("pairable on", "Changing pairable on succeeded")
+                session.pairing = True
+                session.command(
+                    f"pair {current.address}", "Pairing successful", PAIR_TIMEOUT_SECONDS
+                )
+                session.pairing = False
+                current = wait_for_device_property(busctl, current.address, "paired", True)
+                print(f"Paired {current.alias}.")
 
-    if not current.trusted:
-        run_bluetooth_command(bluetoothctl, ["trust", current.address])
-        current = wait_for_device_property(
-            busctl, current.address, "trusted", True
-        )
-        print(f"Trusted {current.alias}.")
+            if not current.trusted:
+                phase = "trust"
+                session.command(f"trust {current.address}", "trust succeeded")
+                current = wait_for_device_property(busctl, current.address, "trusted", True)
+                print(f"Trusted {current.alias}.")
 
-    if not current.connected:
-        run_bluetooth_command(bluetoothctl, ["connect", current.address])
-        current = wait_for_device_property(
-            busctl, current.address, "connected", True
-        )
-        print(f"Connected {current.alias}.")
+            if not current.connected:
+                phase = "connection"
+                print(f"Connecting {current.alias}…", flush=True)
+                session.command(f"connect {current.address}", "Connection successful")
+                current = wait_for_device_property(busctl, current.address, "connected", True)
+
+            # Check the complete result together; a successful Pair reply alone
+            # does not establish trust or guarantee an active connection.
+            _adapter, devices = read_state(busctl)
+            current = find_device(devices, current.address)
+            if current is None or not (current.paired and current.trusted and current.connected):
+                raise BluetoothError("Device setup did not reach paired, trusted, and connected.")
+            print(f"Ready: {current.alias} is paired, trusted, and connected.")
+            LOGGER.info("Setup complete: %s (%s)", current.alias, current.address)
+    except BluetoothError as error:
+        LOGGER.warning("Setup failed during %s for %s: %s", phase, device.address, error)
+        raise BluetoothError(f"Could not complete {phase}: {error}") from error
+    except (EOFError, KeyboardInterrupt):
+        LOGGER.info("Setup canceled during %s for %s", phase, device.address)
+        raise
+    finally:
+        # Interactive bluetoothctl can enable pairability on startup. Restore
+        # the state owned by the scanner, or the prior state for a cached device.
+        try:
+            run_bluetooth_command(
+                bluetoothctl, ["pairable", "on" if adapter.pairable else "off"]
+            )
+        except BluetoothError as error:
+            LOGGER.warning("Could not restore pairability: %s", error)
+            print(f"WARNING: Could not restore Bluetooth pairability: {error}", file=sys.stderr)
 
 
 def connect_device(
@@ -871,10 +1094,15 @@ def run_interactive(busctl: str, bluetoothctl: str) -> int:
                     "Please enter a listed device number, S, P, A, R, or Q."
                 )
                 continue
-            if scanner.active:
-                scanner.stop()
-                print("Bluetooth scan stopped before device actions.")
-            manage_device(busctl, bluetoothctl, device.address)
+            # Keep discovery and pairability available while device setup runs.
+            # Stopping first releases the scanner's agent and can lose an
+            # unpaired device's advertisement before authentication starts.
+            try:
+                manage_device(busctl, bluetoothctl, device.address)
+            finally:
+                if scanner.active:
+                    scanner.stop()
+                    print("Bluetooth scan stopped.")
     finally:
         scanner.stop()
 
@@ -933,6 +1161,7 @@ def launch_waybar_manager() -> int:
 
 
 def main() -> int:
+    configure_logging()
     arguments = sys.argv[1:]
     if arguments == ["--launch"]:
         return launch_waybar_manager()
@@ -989,6 +1218,25 @@ def main() -> int:
         return 0
     finally:
         lock.close()
+
+
+def configure_logging() -> None:
+    """Retain setup outcomes without recording authentication secrets."""
+    state_root = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+    try:
+        directory = os.path.join(state_root, "zenwolf")
+        os.makedirs(directory, exist_ok=True)
+        handler = RotatingFileHandler(
+            os.path.join(directory, "bluetooth.log"),
+            maxBytes=256 * 1024,
+            backupCount=2,
+            encoding="utf-8",
+        )
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+        LOGGER.addHandler(handler)
+        LOGGER.setLevel(logging.INFO)
+    except OSError:
+        pass
 
 
 if __name__ == "__main__":

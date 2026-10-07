@@ -339,6 +339,30 @@ zenwolf-spicetify repair
 Use `zenwolf-spicetify restore` to remove the patch. See the official
 [Spicetify Linux instructions][spicetify].
 
+### Bluetooth device setup
+
+Run `bluetooth` or click Waybar's Bluetooth indicator to open the terminal
+manager. Put the peripheral into pairing mode, press `S` to scan, then `R` to
+refresh. Select its number and choose `P` to pair, trust, and connect. Complete
+PIN or passkey prompts inside the manager. Success requires all three states;
+a failed trust or connection step preserves the pairing for a retry.
+
+The manager owns an interactive Bluetooth authentication client and waits for
+agent registration before sending setup commands. Discovery stays active
+through device actions, then the previous adapter state is restored when you
+return to the main list, stop scanning, or quit. It does not poll in the
+background or install a system-wide default agent.
+
+Setup outcomes are recorded under
+`${XDG_STATE_HOME:-$HOME/.local/state}/zenwolf/bluetooth.log`. The log rotates
+at 256 KiB with two backups and does not record PINs or passkeys. Keep logs
+private: device names and addresses can appear in them. For diagnosis:
+
+```bash
+tail -n 50 "${XDG_STATE_HOME:-$HOME/.local/state}/zenwolf/bluetooth.log"
+journalctl -u bluetooth.service -b --no-pager
+```
+
 ### Matrix terminal effect
 
 The `matrix` launcher supplies Zenwolf's preset to the upstream

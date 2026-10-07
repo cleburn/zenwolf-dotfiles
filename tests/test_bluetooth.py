@@ -1,7 +1,10 @@
 import io
 import runpy
+import subprocess
+import sys
 import unittest
 from contextlib import redirect_stdout
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -16,6 +19,7 @@ ADAPTER_INTERFACE = APP["ADAPTER_INTERFACE"]
 DEVICE_INTERFACE = APP["DEVICE_INTERFACE"]
 BluetoothError = APP["BluetoothError"]
 Device = APP["Device"]
+DeviceSession = APP["DeviceSession"]
 Scanner = APP["Scanner"]
 device_for_choice = APP["device_for_choice"]
 device_is_anonymous = APP["device_is_anonymous"]
@@ -333,12 +337,19 @@ class CommandTests(unittest.TestCase):
         wait = Mock(
             side_effect=[paired, trusted, connected]
         )
+        session = Mock()
+        session_type = Mock()
+        session_type.return_value.__enter__ = Mock(return_value=session)
+        session_type.return_value.__exit__ = Mock(return_value=False)
+        adapter = read_adapter(managed_objects())
 
         with patch.dict(
             setup_device.__globals__,
             {
                 "run_bluetooth_command": command,
                 "wait_for_device_property": wait,
+                "DeviceSession": session_type,
+                "read_state": Mock(side_effect=[(adapter, [unpaired]), (adapter, [connected])]),
             },
         ):
             with redirect_stdout(io.StringIO()):
@@ -349,17 +360,115 @@ class CommandTests(unittest.TestCase):
                 )
 
         self.assertEqual(
-            [call.args[1] for call in command.call_args_list],
+            [call.args[0] for call in session.command.call_args_list],
             [
-                ["pair", "AA:BB:CC:DD:EE:01"],
-                ["trust", "AA:BB:CC:DD:EE:01"],
-                ["connect", "AA:BB:CC:DD:EE:01"],
+                "pairable on",
+                "pair AA:BB:CC:DD:EE:01",
+                "trust AA:BB:CC:DD:EE:01",
+                "connect AA:BB:CC:DD:EE:01",
             ],
         )
         self.assertEqual(
             [call.args[2] for call in wait.call_args_list],
             ["paired", "trusted", "connected"],
         )
+        command.assert_called_once_with("/usr/bin/bluetoothctl", ["pairable", "off"])
+        self.assertFalse(session.pairing)
+
+    def test_retry_preserves_existing_pairing(self) -> None:
+        adapter = read_adapter(managed_objects())
+        device = replace(read_devices(managed_objects(), ADAPTER_PATH)[1], trusted=False)
+        trusted = replace(device, trusted=True)
+        connected = replace(trusted, connected=True)
+        session = Mock()
+        session_type = Mock()
+        session_type.return_value.__enter__ = Mock(return_value=session)
+        session_type.return_value.__exit__ = Mock(return_value=False)
+        with patch.dict(setup_device.__globals__, {
+            "read_state": Mock(side_effect=[(adapter, [device]), (adapter, [connected])]),
+            "DeviceSession": session_type,
+            "run_bluetooth_command": Mock(),
+            "wait_for_device_property": Mock(side_effect=[trusted, connected]),
+        }), redirect_stdout(io.StringIO()):
+            setup_device("busctl", "bluetoothctl", device)
+        self.assertEqual([call.args[0] for call in session.command.call_args_list],
+                         [f"trust {device.address}", f"connect {device.address}"])
+
+    def test_failed_setup_restores_previous_pairability(self) -> None:
+        adapter = replace(read_adapter(managed_objects()), pairable=True)
+        device = read_devices(managed_objects(), ADAPTER_PATH)[1]
+        session = Mock()
+        session.command.side_effect = BluetoothError("Connection attempt failed")
+        session_type = Mock()
+        session_type.return_value.__enter__ = Mock(return_value=session)
+        session_type.return_value.__exit__ = Mock(return_value=False)
+        command = Mock()
+        with patch.dict(setup_device.__globals__, {
+            "read_state": Mock(return_value=(adapter, [device])),
+            "DeviceSession": session_type,
+            "run_bluetooth_command": command,
+        }), redirect_stdout(io.StringIO()):
+            with self.assertRaisesRegex(BluetoothError, "connection"):
+                setup_device("busctl", "bluetoothctl", device)
+        command.assert_called_once_with("bluetoothctl", ["pairable", "on"])
+
+
+class AgentSessionTests(unittest.TestCase):
+    # An isolated Python child emulates bluetoothctl's text protocol. These
+    # checks never access D-Bus, an adapter, or any real Bluetooth device.
+    CLIENT = '''
+import sys
+print("Agent registered", flush=True)
+for line in sys.stdin:
+    command = line.strip()
+    if command == "quit":
+        break
+    if command == "prompt":
+        print(sys.argv[1], end="", flush=True)
+    elif command == "fail":
+        print("Failed to connect: org.bluez.Error.Failed", flush=True)
+    else:
+        print("Pairing successful", flush=True)
+'''
+
+    def session(self, prompt=""):
+        device = read_devices(managed_objects(), ADAPTER_PATH)[1]
+        original_popen = subprocess.Popen
+        def start(_command, **kwargs):
+            return original_popen([sys.executable, "-u", "-c", self.CLIENT, prompt], **kwargs)
+        return DeviceSession("bluetoothctl", device), patch.object(APP["subprocess"], "Popen", side_effect=start)
+
+    def test_waits_for_registration_and_closes_agent(self):
+        session, launch = self.session()
+        with launch, session:
+            process = session.process
+            session.command("pair device", "Pairing successful", 2)
+        self.assertIsNone(session.process)
+        self.assertIsNotNone(process.poll())
+
+    def test_authorizes_only_selected_session(self):
+        session, launch = self.session("Accept pairing (yes/no):")
+        with launch, session:
+            session.command("prompt", "Pairing successful", 2)
+
+    def test_display_passkey_is_shown_to_user(self):
+        session, launch = self.session("[agent] Passkey: 123456\n")
+        with launch, session, redirect_stdout(io.StringIO()) as output:
+            session.send("prompt")
+            session._wait("Passkey: 123456", 2)
+        self.assertIn("123456", output.getvalue())
+
+    def test_failure_is_reported(self):
+        session, launch = self.session()
+        with launch, session:
+            with self.assertRaisesRegex(BluetoothError, "Failed to connect"):
+                session.command("fail", "Connection successful", 2)
+
+    def test_timeout_is_bounded(self):
+        session, launch = self.session()
+        with launch, session:
+            with self.assertRaisesRegex(BluetoothError, "timed out"):
+                session._wait("Never emitted", 0.05)
 
 
 class ScannerTests(unittest.TestCase):
