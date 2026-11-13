@@ -25,7 +25,7 @@ The complete desktop and hardware layer were built for Arch, with an AMD display
 
 ## Install and run
 
-For the original Arch setup, follow the [build guide](docs/build-guide.md). For Kali Linux on an Apple-silicon Mac, use the [VMware Fusion notes](docs/kali-vmware-apple-silicon.md) and check the Kali package versions before deploying compositor configuration.
+For the original Arch setup, follow the [build guide](docs/build-guide.md). For Kali Linux on an Apple-silicon Mac, use the [VMware Fusion notes](docs/kali-vmware-apple-silicon.md). Check Kali's Hyprland version and package candidates before deploying compositor configuration.
 
 Clone this fork and preview the home-directory deployment:
 

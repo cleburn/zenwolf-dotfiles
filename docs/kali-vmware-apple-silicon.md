@@ -1,18 +1,18 @@
 # Kali Linux on VMware Fusion (Apple silicon)
 
-This is an **instructions-only adaptation** for the `heikojan2010/zenwolf-dotfiles` fork. It does not convert the Arch-specific system modules or promise that every upstream desktop component works in a Kali VM. The original [Arch build guide](build-guide.md) remains the reference for the upstream setup.
+This is an **instructions-only adaptation** for this fork, not a conversion of Zenwolf's Arch-specific system modules or a tested Kali image. It focuses on Kali ARM64 in VMware Fusion on an Apple-silicon Mac. Keep the original [Arch build guide](build-guide.md) for the upstream setup; do not run its Pacman or hardware-specific instructions in Kali.
 
-## Compatibility first
+## Compatibility and safety
 
-- Create an **ARM64/aarch64 Kali guest** for an Apple-silicon Mac. Do not install an amd64 guest image under the assumption that Fusion will translate it.
-- Hyprland's tracked config uses its Lua API and assumes Hyprland **0.55 or newer**. Kali package versions change; check the candidate version before installing. If Kali does not provide the required version, stop before deploying the Hyprland config. Do not assume a package from another Debian release or an unofficial repository is safe.
-- VMware's virtual graphics device is not the AMD/NVIDIA hybrid hardware this configuration was designed for. Do not install the optional GPU, NVIDIA, suspend, or ESP modules described in the Arch guide.
-- A VM can have limited or absent 3D acceleration. Treat Hyprland as an experiment; use Kali's supported desktop (such as Xfce) if the virtual display, compositor, or performance is unreliable.
-- The commands below install packages inside the guest only. Back up the VM before changing its desktop or display configuration.
+- Use a Kali **ARM64/aarch64** installer image and create an ARM virtual machine in Fusion. An amd64 image is not the right guest architecture for Apple silicon.
+- The tracked compositor config uses Hyprland's Lua API and requires **Hyprland 0.55 or newer**. Kali's candidate version may be older or some packages may be unavailable. Check before installing; if the requirement is not met, use Kali's supported desktop and do not launch the tracked Hyprland config.
+- VMware's virtual graphics device is not the AMD/NVIDIA hybrid hardware this setup was designed for. Do not install Zenwolf's NVIDIA, GPU lifecycle, suspend, or ESP modules in this VM.
+- Hyprland under Fusion is experimental. 3D acceleration and display behavior depend on Fusion, guest tools, and the Kali release. Prefer Kali's supported desktop (commonly Xfce) if Wayland or the virtual display is unreliable.
+- Back up the VM before changing desktop or display settings. Commands below affect the Kali guest only.
 
-## 1. Prepare the guest
+## 1. Prepare Kali and VMware guest tools
 
-In VMware Fusion, create a new Linux virtual machine using Kali's ARM64 installer image. Install Kali normally, create a non-root user, and ensure networking works. Install VMware guest tools and basic utilities:
+Create a Kali ARM64 VM in Fusion, install Kali, create a non-root user, and confirm networking. Then install basic tools and the VMware guest utilities:
 
 ```bash
 sudo apt update
@@ -21,18 +21,20 @@ sudo apt install --no-install-recommends \
   open-vm-tools open-vm-tools-desktop
 ```
 
-Reboot the guest after installing guest tools. In Fusion, enable the available display acceleration and adjust the VM's display/resize settings. The exact options depend on Fusion and Kali versions. Verify clipboard, window resizing, and pointer behavior before proceeding.
+Reboot after guest-tools installation. In Fusion, enable the available display acceleration and guest display resizing options. Names and availability vary by Fusion version. Confirm window resizing, pointer movement, clipboard, and networking from Kali before trying another desktop.
 
-## 2. Check Kali package availability
+## 2. Install a minimal desktop only if packages qualify
 
-First inspect what the configured Kali repositories offer; do not assume Arch package names map one-for-one to Debian package names:
+Check the configured Kali repositories and candidate versions first:
 
 ```bash
 apt-cache policy hyprland hyprpaper hyprlock waybar rofi \
   xdg-desktop-portal-hyprland xdg-desktop-portal-gtk
 ```
 
-For this repository's compositor config, the available Hyprland version must satisfy the Lua API requirement above. The package list below is a starting point only. Install only packages for which `apt-cache policy` shows a candidate, and read the proposed APT changes before confirming:
+Proceed only if `hyprland` has a candidate version of **0.55 or newer**, and the required companion packages have candidates. If a package is unavailable or the version is too old, stop here; do not add a random Debian repository or install packages from a different Kali/Debian release to force the setup.
+
+Review APT's proposed changes before confirming this minimal set:
 
 ```bash
 sudo apt install \
@@ -40,18 +42,20 @@ sudo apt install \
   xdg-desktop-portal-hyprland xdg-desktop-portal-gtk \
   pipewire pipewire-audio pipewire-pulse wireplumber pavucontrol \
   grim slurp wl-clipboard libnotify \
-  thunar tumbler ffmpegthumbnailer gvfs file-roller \
   xdg-user-dirs desktop-file-utils \
   fonts-noto fonts-noto-color-emoji fonts-font-awesome
 ```
 
-If APT reports unavailable packages, omit or replace those individual applications rather than adding an unrelated repository. Some upstream applications in the Arch instructions (including Ghostty, Satty, Yazi, Spotify Launcher, and Cloudflare Speed) may need a separate, reviewed installation method or may not be appropriate in this guest. The current configs expect particular applications and utilities; missing commands can make their corresponding shortcuts or integrations fail.
+If APT cannot locate a listed package, do not continue with a partial Hyprland setup: use Kali's supported desktop, or separately adapt and test the configuration for the packages available in your Kali release. Check optional applications individually before installing them:
 
-For a conservative first trial, use Kali's supported desktop and borrow only shell settings, themes, wallpapers, and standalone games. Add Hyprland and its integrations only after confirming package versions and the guest graphics path.
+```bash
+apt-cache policy thunar tumbler ffmpegthumbnailer gvfs file-roller \
+  mpv firefox-esr cava btop
+```
 
-## 3. Clone and preview
+Ghostty, Satty, Yazi, Spotify Launcher, Cloudflare Speed, and several other upstream applications may require separate installation methods or may not be suitable for this guest. The dotfiles' shortcuts and integrations expect specific program names, so missing applications will make those features unavailable. Do not add repositories or run third-party install scripts without reviewing and trusting their source.
 
-Use the fork, not the upstream author's repository:
+## 3. Clone the fork and preview deployment
 
 ```bash
 git clone --branch kali-vmware-m4 \
@@ -60,7 +64,7 @@ cd zenwolf-dotfiles
 rsync -avni home/ "$HOME/"
 ```
 
-Review every proposed path. Back up existing files, then deploy only the components you want, without `--delete`:
+Review the preview and back up any existing files you may overwrite. Deploy only the pieces you want, without `--delete`:
 
 ```bash
 rsync -avi home/ "$HOME/"
@@ -72,13 +76,13 @@ systemctl --user daemon-reload
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Do **not** copy `system/` into the guest root. The root-owned examples target specific Arch machines and hardware; this VM does not need them.
+Do **not** copy `system/` into the guest root. Its examples target Arch and specific physical hardware; this VM does not need them. Do not create `/etc/zenwolf/hardware.conf` from the AMD/NVIDIA example.
 
-## 4. Adapt and validate before starting Hyprland
+## 4. Validate before starting Hyprland
 
-The supplied configuration selects a Mac keyboard variant and contains monitor defaults, but VMware virtual output names and input behavior can differ. From the running compositor, use `hyprctl monitors` to inspect outputs, then adjust `home/.config/hypr/hyprland.lua` in your clone as needed. Do not copy the upstream AMD/NVIDIA hardware values.
+The supplied configuration selects a Mac keyboard variant and uses generic monitor defaults, but VMware output names and input behavior can differ. If Hyprland is running, inspect outputs with `hyprctl monitors` and adjust your own clone's `home/.config/hypr/hyprland.lua` as needed.
 
-If the installed Hyprland supports the expected Lua interface, validate before launching:
+Confirm the installed compositor version and check the config before launching the desktop:
 
 ```bash
 Hyprland --version
@@ -86,12 +90,14 @@ Hyprland --verify-config --config ~/.config/hypr/hyprland.lua
 zenwolf-theme-build check
 ```
 
-If verification reports an unsupported config/API, do not try to work around it by launching the full desktop. Use the supported Kali desktop or separately port and test the config for the installed compositor release.
+Only start the desktop if the version requirement is met and config verification passes. Start from a VM console/TTY and keep a way back to Kali's original desktop. Test display resizing, keyboard layout, pointer, clipboard, audio, screenshots, logout, and recovery before relying on the VM. Do not expect gaming or GPU-acceleration behavior to match a physical machine.
 
-Once the config validates, start from a VM console/TTY and keep a way back to Kali's original desktop. Test suspend/resume, resizing, clipboard, audio, screenshots, and logout. Avoid relying on gaming or GPU-acceleration behavior in the VM.
+## VMware/Kali troubleshooting
 
-## Notes
+- **No resize or unexpected resolution:** shut down the guest and review Fusion's display/resize options; verify `open-vm-tools-desktop` is installed and the guest was rebooted. Test using Kali's default desktop before debugging Hyprland.
+- **Black screen, compositor crash, or broken redraw:** return to Kali's default desktop from the VM console. Disable the Fusion graphics acceleration option if available, or abandon Hyprland in this VM. Do not keep changing system modules to address virtual graphics problems.
+- **Config verification fails or Hyprland is too old:** do not launch Zenwolf's compositor config. Check `apt-cache policy hyprland`; use the supported Kali desktop or independently port the config to a compatible release.
+- **Missing app or integration:** check the package name with `apt-cache policy <package>` and the command with `command -v <program>`. Disable or adapt only that integration; do not mix packages from unrelated releases.
+- **No audio or clipboard integration:** verify VMware guest tools, Kali's audio service, and Fusion's guest settings from the default desktop first. These features are not guaranteed by the dotfiles.
 
-- Kali is a penetration-testing distribution. Keep it updated and use it only in authorized environments.
-- `apt` replaces `pacman`; do not run the Arch package or Pacman-hook instructions from the upstream build guide in Kali.
-- This branch documents a practical starting path; it is not an end-to-end tested Kali image or a complete Debian port of Zenwolf.
+Kali is intended for authorized security work. Keep it updated through its configured Kali repositories and use it only in environments where you have permission.
